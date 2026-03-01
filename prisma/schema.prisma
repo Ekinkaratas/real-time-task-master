@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN // Sistem genelinde tam yetki
+  MANAGER // Board bazında yönetim yetkisi
+  USER // Sadece kendine atanan veya dahil olduğu boardları görme
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+// 1. Kullanıcı Tablosu
+model User {
+  id       String  @id @default(uuid())
+  email    String  @unique
+  name     String?
+  password String
+
+  ownedBoards Board[] @relation("BoardOwner")
+
+  boardMemberships BoardMember[]
+
+  tasks            Task[] // Kendisine atanan tasklar
+  status           UserStatus @default(ACTIVE)
+  role             UserRole   @default(USER)
+  refreshTokenHash String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+// 2. Board (Pano) Tablosu
+model Board {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  ownerId     String
+  owner       User    @relation("BoardOwner", fields: [ownerId], references: [id])
+
+  members BoardMember[]
+
+  columns   Column[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 3. Column (Sütun) Tablosu
+model Column {
+  id        String   @id @default(uuid())
+  title     String
+  order     Int // Sütunların soldan sağa sırası
+  boardId   String
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Board ve User arasındaki köprü
+model BoardMember {
+  id String @id @default(uuid())
+
+  boardId String
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role BoardMemberRole @default(MEMBER)
+
+  status EnrollmentStatus @default(PENDING) // Üyelik durumu
+
+  @@unique([boardId, userId]) // Bir kullanıcı bir board'da sadece bir kez üye olabilir
+}
+
+// 4. Task (Görev/Kart) Tablosu
+model Task {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  order       Int // Sütun içindeki aşağıdan yukarı sırası
+  priority    Priority   @default(MEDIUM)
+  taskStatus  TaskStatus @default(TODO)
+
+  columnId String
+  column   Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  assigneeId String?
+  assignee   User?   @relation(fields: [assigneeId], references: [id])
+
+  subtasks  Subtask[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// 5. Subtask (Alt Görev) Tablosu
+model Subtask {
+  id          String  @id @default(uuid())
+  title       String
+  isCompleted Boolean @default(false)
+  taskId      String
+  task        Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// Görev öncelikleri için Enum
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum BoardMemberRole {
+  OWNER // Board oluşturur ve tam yetkiye sahiptir
+  ADMIN // Board ayarlarını değiştirebilir, üye silebilir
+  MEMBER // Kart oluşturabilir, sürükleyebilir
+  VIEWER // Sadece bakabilir
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACCEPTED
+}
