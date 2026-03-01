@@ -7,17 +7,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import {
-  authClientResponseDto,
-  authLogin,
-  authRegisterDto,
-  tokensPayload,
-} from 'contracts/my-library';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AllExceptionsFilter } from 'src/filter/rpc-exception.filter';
 import { RefreshTokenGuard } from '../common/guards/refresh-token.guard';
 import { CurrentUser } from '../common/decorator/get-current-user.decorator';
 import { AccessTokenGuard } from '../common/guards/access-token.guard';
+import {
+  authClientResponseDto,
+  authLogin,
+  authRegisterDto,
+  tokensPayload,
+} from 'libs/contracts/src/Auth';
 
 @ApiTags('auth')
 @UseFilters(new AllExceptionsFilter())

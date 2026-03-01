@@ -5,16 +5,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import * as argon from 'argon2';
+import { UserService } from 'src/user/user.service';
+import { RedisService } from 'src/redis/redis.service';
 import {
   authClientResponseDto,
   authLogin,
   authRegisterDto,
   tokensPayload,
-  toUserRegisterDto,
-} from 'contracts/my-library';
-import * as argon from 'argon2';
-import { UserService } from 'src/user/user.service';
-import { RedisService } from 'src/redis/redis.service';
+} from 'libs/contracts/src/Auth';
+import { toUserRegisterDto } from 'libs/contracts/src/User';
 
 export interface Tokens {
   access_token: string;

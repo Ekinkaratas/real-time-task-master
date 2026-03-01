@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { tokensPayload } from 'contracts/my-library';
+import { tokensPayload } from 'libs/contracts/src/Auth';
 
 interface RequestWithUser {
   user: tokensPayload;

@@ -10,7 +10,8 @@ import {
   userForAuthResponse,
   userLoginDto,
   userRegisterDto,
-} from 'contracts/my-library';
+} from 'libs/contracts/src/User';
+
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()

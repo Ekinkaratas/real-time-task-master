@@ -9,7 +9,8 @@ import {
   AddMemberDto,
   CreateBoardDto,
   UpdateToBoardDto,
-} from 'contracts/my-library';
+} from 'libs/contracts/src/boards';
+
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserService } from 'src/user/user.service';
 

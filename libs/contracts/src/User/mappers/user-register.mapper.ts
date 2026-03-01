@@ -1,4 +1,4 @@
-import { authRegisterDto } from 'contracts/my-library/Auth/register.dto.js';
+import { authRegisterDto } from 'libs/contracts/src/Auth/register.dto.js';
 import { userRegisterDto } from '../user-register.dto.js';
 
 export function toUserRegisterDto(

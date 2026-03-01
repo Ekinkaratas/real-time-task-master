@@ -20,7 +20,7 @@ import {
   AddMemberDto,
   CreateBoardDto,
   UpdateToBoardDto,
-} from 'contracts/my-library';
+} from 'libs/contracts/src/boards';
 
 @ApiTags('board')
 @UseFilters(new AllExceptionsFilter())
