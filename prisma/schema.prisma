@@ -62,12 +62,15 @@ model Board {
 
 // 3. Column (Sütun) Tablosu
 model Column {
-  id        String   @id @default(uuid())
-  title     String
-  order     Int // Sütunların soldan sağa sırası
-  boardId   String
-  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  tasks     Task[]
+  id    String @id @default(uuid())
+  title String
+  order Int
+
+  boardId String
+  board   Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  tasks Task[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -93,7 +96,7 @@ model BoardMember {
 model Task {
   id          String     @id @default(uuid())
   title       String
-  description String?
+  description String     @default("No description has been added yet.")
   order       Int // Sütun içindeki aşağıdan yukarı sırası
   priority    Priority   @default(MEDIUM)
   taskStatus  TaskStatus @default(TODO)
