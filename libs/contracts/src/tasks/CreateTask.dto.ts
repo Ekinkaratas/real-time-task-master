@@ -1,5 +1,13 @@
 import { Priority, TaskStatus } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreateTaskDto {
   @IsString()
@@ -17,4 +25,10 @@ export class CreateTaskDto {
   @IsEnum(TaskStatus)
   @IsOptional()
   status?: TaskStatus;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => String)
+  @IsNotEmpty()
+  assigneeEmails!: string[];
 }

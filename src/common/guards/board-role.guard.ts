@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { BoardMemberRole } from '@prisma/client';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { BOARD_ROLE_KEY } from '../decorator/board-role.decorator';
 
 interface RequestWithUser extends Request {

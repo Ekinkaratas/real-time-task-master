@@ -23,6 +23,7 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "contracts/*": ["libs/contracts/src/*"]
-    }
+    },
+    "types": ["node", "jest"]
   }
 }

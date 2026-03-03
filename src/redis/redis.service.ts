@@ -51,23 +51,20 @@ export class RedisService {
       throw new InternalServerErrorException('Redis transaction failed');
     }
 
-    // Redis'ten gelen değer null ise result[x][1] null döner
     const access = result[0][1] as string | null;
     const refresh = result[1][1] as string | null;
 
-    // EĞER REFRESH TOKEN SİLİNMİŞSE (TTL DOLMUŞSA)
     if (!refresh) {
       throw new UnauthorizedException('Session expired. Please log in again.');
     }
 
-    // Access silinmiş ama refresh duruyorsa, yeni bir access üretme mantığına da gidebilirsin
-    // Ama şimdilik basit tutalım:
     if (!access) {
       throw new UnauthorizedException('Access token missing.');
     }
 
     return { access, refresh };
   }
+
   async deleteTokens(userId: string) {
     await this.client.del(`auth:access:${userId}`);
     await this.client.del(`auth:refresh:${userId}`);

@@ -11,16 +11,16 @@ import {
 } from '@nestjs/common';
 import { BoardService } from './board.service';
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AllExceptionsFilter } from 'src/filter/rpc-exception.filter';
-import { BoardRoleGuard } from 'src/common/guards/board-role.guard';
-import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
-import { BoardRoles } from 'src/common/decorator/board-role.decorator';
-import { CurrentUser } from 'src/common/decorator/get-current-user.decorator';
+import { AllExceptionsFilter } from '../filter/rpc-exception.filter';
+import { BoardRoleGuard } from '../common/guards/board-role.guard';
+import { AccessTokenGuard } from '../common/guards/access-token.guard';
+import { BoardRoles } from '../common/decorator/board-role.decorator';
+import { CurrentUser } from '../common/decorator/get-current-user.decorator';
 import {
   AddMemberDto,
   CreateBoardDto,
   UpdateToBoardDto,
-} from 'libs/contracts/src/boards';
+} from 'contracts/boards';
 
 @ApiTags('board')
 @UseFilters(new AllExceptionsFilter())

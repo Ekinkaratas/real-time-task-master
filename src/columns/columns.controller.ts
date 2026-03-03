@@ -10,12 +10,12 @@ import {
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ColumnsService } from './columns.service';
-import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
-import { AllExceptionsFilter } from 'src/filter/rpc-exception.filter';
-import { BoardRoleGuard } from 'src/common/guards/board-role.guard';
-import { BoardRoles } from 'src/common/decorator/board-role.decorator';
+import { AccessTokenGuard } from '../common/guards/access-token.guard';
+import { AllExceptionsFilter } from '../filter/rpc-exception.filter';
+import { BoardRoleGuard } from '../common/guards/board-role.guard';
+import { BoardRoles } from '../common/decorator/board-role.decorator';
 import { ColumnResponseDto, ReorderColumnDto } from 'contracts/columns';
 
 @ApiTags('columns')
@@ -26,9 +26,8 @@ export class ColumnsController {
   constructor(private readonly columnsService: ColumnsService) {}
 
   @ApiOperation({ summary: 'Create a new column for a specific board' })
-  @ApiBody({ schema: { example: { title: 'To Do' } } })
   @UseGuards(BoardRoleGuard)
-  @BoardRoles('ADMIN', 'OWNER')
+  @BoardRoles('ADMIN', 'OWNER', 'MEMBER')
   @Post('/:boardId')
   createColumn(
     @Param('boardId') boardId: string,
@@ -57,7 +56,6 @@ export class ColumnsController {
   }
 
   @ApiOperation({ summary: 'Update a column for a specific board' })
-  @ApiBody({ schema: { example: { title: 'In Progress' } } })
   @UseGuards(BoardRoleGuard)
   @BoardRoles('ADMIN', 'OWNER')
   @Patch('/:boardId/:columnId')
@@ -70,7 +68,6 @@ export class ColumnsController {
   }
 
   @ApiOperation({ summary: 'Delete multiple columns from a board' })
-  @ApiBody({ type: [String], description: 'Array of Column IDs to delete' })
   @UseGuards(BoardRoleGuard)
   @BoardRoles('ADMIN', 'OWNER')
   @Delete('/:boardId/bulk')

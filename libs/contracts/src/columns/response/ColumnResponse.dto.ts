@@ -8,7 +8,7 @@ import {
   IsUUID,
   ValidateNested,
 } from 'class-validator';
-import { TaskCreateResponseDto } from 'contracts/tasks/response/TaskCreateResponse.dto';
+import { TaskResponseForColumnsResponse } from 'contracts/tasks';
 
 export class ColumnResponseDto {
   @IsUUID()
@@ -28,8 +28,8 @@ export class ColumnResponseDto {
   boardId!: string;
 
   @IsOptional()
-  @Type(() => TaskCreateResponseDto)
+  @Type(() => TaskResponseForColumnsResponse)
   @IsArray()
   @ValidateNested({ each: true })
-  tasks?: TaskCreateResponseDto[];
+  tasks?: TaskResponseForColumnsResponse[];
 }

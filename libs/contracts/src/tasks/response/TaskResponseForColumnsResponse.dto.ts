@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
-export class TaskCreateResponseDto {
+export class TaskResponseForColumnsResponse {
   @IsUUID()
   @IsNotEmpty()
   id!: string;
@@ -12,7 +12,4 @@ export class TaskCreateResponseDto {
   @IsString()
   @IsOptional()
   description!: string;
-
-  //priority?
-  //taskStatus?
 }

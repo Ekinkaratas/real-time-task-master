@@ -5,14 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BoardMemberRole, EnrollmentStatus, Prisma } from '@prisma/client';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { UserService } from '../user/user.service';
 import {
   AddMemberDto,
   CreateBoardDto,
   UpdateToBoardDto,
-} from 'libs/contracts/src/boards';
-
-import { PrismaService } from 'src/prisma/prisma.service';
-import { UserService } from 'src/user/user.service';
+} from 'contracts/boards';
 
 @Injectable()
 export class BoardService {
@@ -51,11 +51,13 @@ export class BoardService {
     boardId: string,
     userDto: AddMemberDto,
   ): Promise<{ message: string }> {
-    const userId = await this.userService.findIdByEmail(userDto.email);
+    const users = await this.userService.findIdByEmail([userDto.email]);
 
-    if (!userId) {
+    if (!users.length) {
       throw new NotFoundException(`User with email ${userDto.email} not found`);
     }
+
+    const userId = users[0].id;
 
     try {
       await this.prisma.boardMember.create({
@@ -84,11 +86,13 @@ export class BoardService {
     boardId: string,
     userEmail: string,
   ): Promise<{ message: string }> {
-    const userId = await this.userService.findIdByEmail(userEmail);
+    const users = await this.userService.findIdByEmail([userEmail]);
 
-    if (!userId) {
+    if (!users.length) {
       throw new NotFoundException(`User with email ${userEmail} not found`);
     }
+
+    const userId = users[0].id;
 
     try {
       await this.prisma.boardMember.delete({

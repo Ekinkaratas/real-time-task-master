@@ -6,6 +6,7 @@ export class ReorderColumnDto {
   id!: string;
 
   @IsInt()
+  @IsNotEmpty()
   @Min(1)
   order!: number;
 }

@@ -5,3 +5,4 @@ export * from './Auth/index';
 export * from './tasks/index';
 export * from './boards/index';
 export * from './columns/index';
+export * from './subtasks/index';

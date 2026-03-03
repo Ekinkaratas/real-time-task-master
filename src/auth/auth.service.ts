@@ -6,15 +6,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
-import { UserService } from 'src/user/user.service';
-import { RedisService } from 'src/redis/redis.service';
+import { UserService } from '../user/user.service';
+import { RedisService } from '../redis/redis.service';
 import {
   authClientResponseDto,
   authLogin,
   authRegisterDto,
   tokensPayload,
-} from 'libs/contracts/src/Auth';
-import { toUserRegisterDto } from 'libs/contracts/src/User';
+} from 'contracts/Auth';
+import { toUserRegisterDto } from 'contracts/User';
 
 export interface Tokens {
   access_token: string;
@@ -144,7 +144,7 @@ export class AuthService {
 
     await this.userService.addRefreshToken(
       req.id,
-      argon.hash(tokens.refresh_token),
+      await argon.hash(tokens.refresh_token),
     );
 
     try {

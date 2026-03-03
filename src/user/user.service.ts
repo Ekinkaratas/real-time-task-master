@@ -12,7 +12,7 @@ import {
   userRegisterDto,
 } from 'libs/contracts/src/User';
 
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class UserService {
@@ -39,7 +39,6 @@ export class UserService {
 
       return user as userForAuthResponse;
     } catch (error) {
-      // ... hata yakalama kodların
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           throw new ForbiddenException('Credentials taken.');
@@ -84,7 +83,6 @@ export class UserService {
       });
     } catch (error) {
       if (error instanceof PrismaClientKnownRequestError) {
-        // P2025 = record not found
         if (error.code === 'P2025') {
           return;
         }
@@ -113,30 +111,28 @@ export class UserService {
     }
   }
 
-  async findIdByEmail(email: string): Promise<string> {
-    try {
-      const user = await this.prisma.user.findUniqueOrThrow({
-        where: { email },
-        select: { id: true },
-      });
+  async findIdByEmail(
+    emails: string[],
+  ): Promise<{ id: string; email: string }[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { in: emails },
+      },
+      select: { id: true, email: true },
+    });
 
-      return user.id;
-    } catch (error) {
-      console.error('User fetch error:', error);
-      throw new NotFoundException(`User with email ${email} not found`);
+    if (!users.length) {
+      throw new NotFoundException('No users found for given emails');
     }
+
+    return users;
   }
 
-  async addRefreshToken(
-    userId: string,
-    refreshToken: Promise<string>,
-  ): Promise<void> {
+  async addRefreshToken(userId: string, refreshToken: string): Promise<void> {
     try {
-      const tokenValue = await refreshToken;
-
       await this.prisma.user.update({
         where: { id: userId },
-        data: { refreshTokenHash: tokenValue },
+        data: { refreshTokenHash: refreshToken },
       });
     } catch (error) {
       console.log(error);

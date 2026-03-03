@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { TaskStatus } from '@prisma/client';
+import { Priority, TaskStatus } from '@prisma/client';
 
 export class UpdateTaskDto {
   @IsString()
@@ -12,5 +12,9 @@ export class UpdateTaskDto {
 
   @IsEnum(TaskStatus)
   @IsOptional()
-  status?: TaskStatus;
+  taskStatus?: TaskStatus;
+
+  @IsEnum(Priority)
+  @IsOptional()
+  priority?: Priority;
 }
