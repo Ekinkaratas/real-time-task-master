@@ -187,6 +187,41 @@ export class TasksService {
     }
   }
 
+  async calculateTaskProgress(id: string): Promise<{ progress: number }> {
+    try {
+      const task = await this.prisma.task.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              subtasks: true,
+            },
+          },
+          subtasks: {
+            where: { isCompleted: true },
+          },
+        },
+      });
+
+      if (!task) {
+        throw new NotFoundException('No Task Found');
+      }
+
+      const total = task._count.subtasks;
+      const completedSubtask = task.subtasks.length;
+      const progressPercentage =
+        total === 0 ? 0 : Math.round((completedSubtask / total) * 100);
+
+      return { progress: progressPercentage };
+    } catch (e) {
+      if (e instanceof HttpException) {
+        throw e;
+      }
+      console.error('Error while retrieving tasks progress:' + e);
+      throw new InternalServerErrorException('A technical error occurred.');
+    }
+  }
+
   async reOrder(reOrderDto: ReOrderTaskDto[]): Promise<TaskResponseDto[]> {
     const queryReOrder = reOrderDto.map((item) =>
       this.prisma.task.update({
