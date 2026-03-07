@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  ParseArrayPipe,
   Patch,
   Post,
   UseFilters,
@@ -53,5 +55,15 @@ export class SubtaskController {
     @Body() updateSubTaskDto: UpdateSubTaskDto,
   ): Promise<SubTasksResponseDto> {
     return this.service.updateSubTask(subtaskId, updateSubTaskDto);
+  }
+
+  @ApiOperation({ summary: 'delete a subtask' })
+  @BoardRoles('ADMIN', 'OWNER')
+  @Delete('/:BoardId')
+  deleteManySubtask(
+    @Param('BoardId') BoardId: string,
+    @Body(new ParseArrayPipe({ items: String })) subtasksIds: string[],
+  ) {
+    return this.service.deleteManySubtask(BoardId, subtasksIds);
   }
 }

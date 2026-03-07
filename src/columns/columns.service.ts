@@ -8,10 +8,14 @@ import {
 import { Prisma, TaskStatus } from '@prisma/client';
 import { ColumnResponseDto, ReorderColumnDto } from 'contracts/columns';
 import { PrismaService } from '../prisma/prisma.service';
+import { BoardGateway } from '../events/board.gateway';
 
 @Injectable()
 export class ColumnsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: BoardGateway,
+  ) {}
 
   private async lastColumnInBoard(
     boardId: string,
@@ -31,7 +35,7 @@ export class ColumnsService {
 
     const newOrder = lastColumn ? lastColumn.order + 1 : 1;
 
-    return await this.prisma.column.create({
+    const column = await this.prisma.column.create({
       data: {
         boardId: boardId,
         title,
@@ -48,6 +52,10 @@ export class ColumnsService {
         },
       },
     });
+
+    this.gateway.broadcastColumnCreated(column.boardId, column);
+
+    return column;
   }
 
   async getAllColumns(boardId: string): Promise<ColumnResponseDto[]> {
@@ -77,7 +85,7 @@ export class ColumnsService {
     title: string,
   ): Promise<ColumnResponseDto> {
     try {
-      return await this.prisma.column.update({
+      const column = await this.prisma.column.update({
         where: {
           id: columnId,
         },
@@ -95,6 +103,12 @@ export class ColumnsService {
           },
         },
       });
+
+      const boardId = column.boardId;
+
+      this.gateway.broadcastColumnUpdate(boardId, column);
+
+      return column;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError) {
         if (e.code === 'P2025') {
@@ -131,9 +145,13 @@ export class ColumnsService {
     );
 
     try {
-      const res = await this.prisma.$transaction(transactionQueries);
+      const columns = await this.prisma.$transaction(transactionQueries);
 
-      return res.sort((a, b) => a.order - b.order);
+      const result = columns.sort((a, b) => a.order - b.order);
+
+      this.gateway.broadcastColumnReorder(boardId, result);
+
+      return result;
     } catch {
       throw new InternalServerErrorException(
         'An error occurred while updating the ranking.',
@@ -173,6 +191,8 @@ export class ColumnsService {
           'No column to be deleted was found or it has already been deleted.',
         );
       }
+
+      this.gateway.broadcastColumnDelete(boardId, columnIds);
 
       return this.getAllColumns(boardId);
     } catch (e) {

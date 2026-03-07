@@ -13,12 +13,14 @@ import {
 } from 'contracts/tasks';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
+import { BoardGateway } from '../events/board.gateway';
 
 @Injectable()
 export class TasksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
+    private readonly boardGateway: BoardGateway,
   ) {}
 
   private async lastTask(columnsId: string) {
@@ -81,8 +83,13 @@ export class TasksService {
             select: { id: true, title: true, isCompleted: true },
           },
           assignees: true,
+          column: true,
         },
       });
+
+      const boardId = task.column.boardId;
+
+      this.boardGateway.broadcastTaskCreated(boardId, task);
 
       return task;
     } catch (e) {
@@ -109,14 +116,21 @@ export class TasksService {
 
       const assigneesConnect = users.map((user) => ({ id: user.id }));
 
-      await this.prisma.task.update({
+      const task = await this.prisma.task.update({
         where: { id: taskId },
         data: {
           assignees: {
             connect: assigneesConnect,
           },
         },
+        include: {
+          column: true,
+        },
       });
+
+      const boardId = task.column.boardId;
+
+      this.boardGateway.broadcastTaskUpdate(boardId, task);
       return this.getTaskById(taskId);
     } catch (e) {
       if (
@@ -244,6 +258,9 @@ export class TasksService {
           assignees: {
             select: { id: true, name: true, email: true },
           },
+          column: {
+            select: { boardId: true },
+          },
         },
       }),
     );
@@ -251,7 +268,14 @@ export class TasksService {
     try {
       const updatedTasks = await this.prisma.$transaction(queryReOrder);
 
-      return updatedTasks.sort((a, b) => a.order - b.order);
+      const sortedTasks = updatedTasks.sort((a, b) => a.order - b.order);
+
+      if (sortedTasks.length > 0) {
+        const boardId = sortedTasks[0].column.boardId;
+        this.boardGateway.broadcastTaskReordered(boardId, sortedTasks);
+      }
+
+      return sortedTasks;
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -278,12 +302,19 @@ export class TasksService {
     updateTaskDto: UpdateTaskDto,
   ): Promise<TaskResponseDto> {
     try {
-      await this.prisma.task.update({
+      const task = await this.prisma.task.update({
         where: { id },
         data: {
           ...updateTaskDto,
         },
+        include: {
+          column: true,
+        },
       });
+
+      const boardId = task.column.boardId;
+
+      this.boardGateway.broadcastTaskUpdate(boardId, task);
 
       return this.getTaskById(id);
     } catch (e) {
@@ -316,12 +347,19 @@ export class TasksService {
 
       const leadId = user[0].id;
 
-      await this.prisma.task.update({
+      const task = await this.prisma.task.update({
         where: { id: taskId },
         data: {
           leadAssigneeId: leadId,
         },
+        include: {
+          column: true,
+        },
       });
+
+      const boardId = task.column.boardId;
+
+      this.boardGateway.broadcastTaskUpdate(boardId, task);
 
       return this.getTaskById(taskId);
     } catch (e) {
@@ -341,7 +379,20 @@ export class TasksService {
 
   async deleteTask(taskId: string): Promise<boolean> {
     try {
+      const taskToDelete = await this.prisma.task.findUnique({
+        where: { id: taskId },
+        include: { column: true },
+      });
+
+      if (!taskToDelete)
+        throw new NotFoundException('Task to delete does not exist');
+
+      const boardId = taskToDelete.column.boardId;
+
       await this.prisma.task.delete({ where: { id: taskId } });
+
+      this.boardGateway.broadcastTaskDeleted(boardId, taskId);
+
       return true;
     } catch (e) {
       if (
@@ -350,6 +401,8 @@ export class TasksService {
       ) {
         throw new NotFoundException('Task to delete does not exist');
       }
+
+      if (e instanceof HttpException) throw e;
 
       console.error('An e occurred while deleting tasks by ID: ' + e);
       throw new InternalServerErrorException('A technical error occurred.');
@@ -365,14 +418,21 @@ export class TasksService {
 
       const assigneesdisconnect = users.map((u) => ({ id: u.id }));
 
-      await this.prisma.task.update({
+      const task = await this.prisma.task.update({
         where: { id: taskId },
         data: {
           assignees: {
             disconnect: assigneesdisconnect,
           },
         },
+        include: {
+          column: true,
+        },
       });
+
+      const boardId = task.column.boardId;
+
+      this.boardGateway.broadcastTaskUpdate(boardId, task);
 
       return this.getTaskById(taskId);
     } catch (e) {

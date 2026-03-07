@@ -12,10 +12,14 @@ import {
   UpdateSubTaskDto,
 } from 'contracts/subtasks';
 import { PrismaService } from '../prisma/prisma.service';
+import { BoardGateway } from '../events/board.gateway';
 
 @Injectable()
 export class SubtaskService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: BoardGateway,
+  ) {}
 
   async createSubtask(
     taskId: string,
@@ -27,7 +31,16 @@ export class SubtaskService {
           ...createSubTaskDto,
           taskId,
         },
+        include: {
+          task: {
+            select: { column: { select: { boardId: true } } },
+          },
+        },
       });
+
+      const boardId = subtask.task.column.boardId;
+
+      this.gateway.broadcastSubtaskCreated(boardId, subtask);
 
       return subtask;
     } catch (e) {
@@ -79,7 +92,16 @@ export class SubtaskService {
         data: {
           ...updateSubTaskDto,
         },
+        include: {
+          task: {
+            select: { column: { select: { boardId: true } } },
+          },
+        },
       });
+
+      const boardId = updateSubtask.task.column.boardId;
+
+      this.gateway.broadcastSubtaskUpdate(boardId, updateSubtask);
 
       return updateSubtask;
     } catch (e) {
@@ -93,6 +115,33 @@ export class SubtaskService {
 
       console.error('An error occurred while updating the subtask: ' + e);
       throw new InternalServerErrorException('An error occurred');
+    }
+  }
+
+  async deleteManySubtask(boardId: string, SubTaskIds: string[]) {
+    try {
+      const result = await this.prisma.subtask.deleteMany({
+        where: { id: { in: SubTaskIds } },
+      });
+
+      if (result.count === 0) {
+        throw new NotFoundException(
+          'No subtasks to be deleted were found or they have already been deleted.',
+        );
+      }
+
+      this.gateway.broadcastSubtaskDelete(boardId, SubTaskIds);
+
+      return { message: 'Subtasks deleted successfully' };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      console.error('An error occurred while deleting the subtasks:', error);
+      throw new InternalServerErrorException(
+        'A technical error occurred while deleting the subtasks.',
+      );
     }
   }
 }

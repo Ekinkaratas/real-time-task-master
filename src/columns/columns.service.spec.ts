@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ColumnResponseDto, ReorderColumnDto } from 'contracts/columns';
+import { BoardGateway } from '../events/board.gateway';
 
 describe('ColumnsService', () => {
   let service: ColumnsService;
@@ -28,11 +29,19 @@ describe('ColumnsService', () => {
     $transaction: jest.fn(),
   };
 
+  const mockBoardGateway = {
+    broadcastColumnCreated: jest.fn(),
+    broadcastColumnUpdate: jest.fn(),
+    broadcastColumnReorder: jest.fn(),
+    broadcastColumnDelete: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ColumnsService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: BoardGateway, useValue: mockBoardGateway },
       ],
     }).compile();
 

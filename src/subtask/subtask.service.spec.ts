@@ -12,6 +12,7 @@ import {
   SubTasksResponseDto,
   UpdateSubTaskDto,
 } from 'contracts/subtasks';
+import { BoardGateway } from '../events/board.gateway';
 
 describe('SubtaskService', () => {
   let service: SubtaskService;
@@ -23,7 +24,14 @@ describe('SubtaskService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      deleteMany: jest.fn(),
     },
+  };
+
+  const mockBoardGateway = {
+    broadcastSubtaskCreated: jest.fn(),
+    broadcastSubtaskUpdate: jest.fn(),
+    broadcastSubtaskDelete: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -31,6 +39,7 @@ describe('SubtaskService', () => {
       providers: [
         SubtaskService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: BoardGateway, useValue: mockBoardGateway },
       ],
     }).compile();
 
@@ -43,13 +52,15 @@ describe('SubtaskService', () => {
   });
 
   describe('createSubtask', () => {
-    it('Alt görevi başarıyla oluşturmalı', async () => {
+    it('Alt görevi başariyla oluşturmali ve yayin yapmali', async () => {
       const taskId = 'task-1';
       const dto: CreateSubTaskDto = { title: 'Yeni Alt Görev' };
+
       const expectedSubtask = {
         id: 'sub-1',
         title: 'Yeni Alt Görev',
         taskId,
+        task: { column: { boardId: 'board-1' } },
       } as unknown as SubTasksResponseDto;
 
       mockPrismaService.subtask.create.mockResolvedValue(expectedSubtask);
@@ -62,10 +73,19 @@ describe('SubtaskService', () => {
           ...dto,
           taskId,
         },
+        include: {
+          task: {
+            select: { column: { select: { boardId: true } } },
+          },
+        },
       });
+      expect(mockBoardGateway.broadcastSubtaskCreated).toHaveBeenCalledWith(
+        'board-1',
+        expectedSubtask,
+      );
     });
 
-    it('Görev ID bulunamazsa BadRequestException fırlatmalı (P2003)', async () => {
+    it('Görev ID bulunamazsa BadRequestException firlatmali (P2003)', async () => {
       const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2003',
         clientVersion: 'v1',
@@ -77,7 +97,7 @@ describe('SubtaskService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('Başlık çok uzunsa BadRequestException fırlatmalı (P2000)', async () => {
+    it('Başlik çok uzunsa BadRequestException firlatmali (P2000)', async () => {
       const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2000',
         clientVersion: 'v1',
@@ -85,11 +105,11 @@ describe('SubtaskService', () => {
       mockPrismaService.subtask.create.mockRejectedValueOnce(error);
 
       await expect(
-        service.createSubtask('task-1', { title: 'ÇokUzunBaşlık' }),
+        service.createSubtask('task-1', { title: 'ÇokUzunBaşlik' }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('Bilinmeyen bir hata oluşursa InternalServerErrorException fırlatmalı', async () => {
+    it('Bilinmeyen bir hata oluşursa InternalServerErrorException firlatmali', async () => {
       mockPrismaService.subtask.create.mockRejectedValueOnce(
         new Error('DB Down'),
       );
@@ -101,7 +121,7 @@ describe('SubtaskService', () => {
   });
 
   describe('getSubtaskById', () => {
-    it('Alt görevi başarıyla dönmeli', async () => {
+    it('Alt görevi başariyla dönmeli', async () => {
       const expectedSubtask = {
         id: 'sub-1',
         title: 'Alt Görev',
@@ -116,7 +136,7 @@ describe('SubtaskService', () => {
       });
     });
 
-    it('Alt görev bulunamazsa (null dönerse) NotFoundException fırlatmalı', async () => {
+    it('Alt görev bulunamazsa (null dönerse) NotFoundException firlatmali', async () => {
       mockPrismaService.subtask.findUnique.mockResolvedValue(null);
 
       await expect(service.getSubtaskById('wrong-sub')).rejects.toThrow(
@@ -126,14 +146,16 @@ describe('SubtaskService', () => {
   });
 
   describe('updateSubTask', () => {
-    it('Alt görevi başarıyla güncelleyip dönmeli', async () => {
+    it('Alt görevi başariyla güncelleyip yayin yapmali', async () => {
       const dto: UpdateSubTaskDto = {
         title: 'Güncel Alt Görev',
         isCompleted: true,
       };
+
       const expectedSubtask = {
         id: 'sub-1',
         ...dto,
+        task: { column: { boardId: 'board-1' } },
       } as unknown as SubTasksResponseDto;
 
       mockPrismaService.subtask.update.mockResolvedValue(expectedSubtask);
@@ -144,10 +166,19 @@ describe('SubtaskService', () => {
       expect(mockPrismaService.subtask.update).toHaveBeenCalledWith({
         where: { id: 'sub-1' },
         data: { ...dto },
+        include: {
+          task: {
+            select: { column: { select: { boardId: true } } },
+          },
+        },
       });
+      expect(mockBoardGateway.broadcastSubtaskUpdate).toHaveBeenCalledWith(
+        'board-1',
+        expectedSubtask,
+      );
     });
 
-    it('Alt görev bulunamazsa NotFoundException fırlatmalı (P2025)', async () => {
+    it('Alt görev bulunamazsa NotFoundException firlatmali (P2025)', async () => {
       const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2025',
         clientVersion: 'v1',
@@ -159,7 +190,7 @@ describe('SubtaskService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('Başlık çok uzunsa BadRequestException fırlatmalı (P2000)', async () => {
+    it('Başlik çok uzunsa BadRequestException firlatmali (P2000)', async () => {
       const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2000',
         clientVersion: 'v1',
@@ -167,8 +198,49 @@ describe('SubtaskService', () => {
       mockPrismaService.subtask.update.mockRejectedValueOnce(error);
 
       await expect(
-        service.updateSubTask('sub-1', { title: 'ÇokUzunBaşlık' }),
+        service.updateSubTask('sub-1', { title: 'ÇokUzunBaşlik' }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('deleteManySubtask', () => {
+    it('Alt görevleri başariyla silip yayin yapmali', async () => {
+      const boardId = 'board-1';
+      const subtaskIds = ['sub-1', 'sub-2'];
+
+      mockPrismaService.subtask.deleteMany.mockResolvedValue({ count: 2 });
+
+      const result = await service.deleteManySubtask(boardId, subtaskIds);
+
+      expect(result).toEqual({ message: 'Subtasks deleted successfully' });
+      expect(mockPrismaService.subtask.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: subtaskIds } },
+      });
+      expect(mockBoardGateway.broadcastSubtaskDelete).toHaveBeenCalledWith(
+        boardId,
+        subtaskIds,
+      );
+    });
+
+    it('Hiçbir alt görev silinemezse (count: 0) NotFoundException firlatmali', async () => {
+      const boardId = 'board-1';
+      const subtaskIds = ['wrong-1', 'wrong-2'];
+
+      mockPrismaService.subtask.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.deleteManySubtask(boardId, subtaskIds),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('Bilinmeyen bir veritabani hatasinda InternalServerErrorException firlatmali', async () => {
+      mockPrismaService.subtask.deleteMany.mockRejectedValueOnce(
+        new Error('DB Down'),
+      );
+
+      await expect(
+        service.deleteManySubtask('board-1', ['sub-1']),
+      ).rejects.toThrow(InternalServerErrorException);
     });
   });
 });

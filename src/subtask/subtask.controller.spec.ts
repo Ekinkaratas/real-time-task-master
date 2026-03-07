@@ -17,6 +17,7 @@ describe('SubtaskController', () => {
     createSubtask: jest.fn(),
     getSubtaskById: jest.fn(),
     updateSubTask: jest.fn(),
+    deleteManySubtask: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -108,6 +109,24 @@ describe('SubtaskController', () => {
       expect(mockSubtaskService.updateSubTask).toHaveBeenCalledWith(
         subtaskId,
         dto,
+      );
+    });
+  });
+
+  describe('deleteManySubtask', () => {
+    it('BoardId ve silinecek alt görev ID dizisini servise iletmeli', async () => {
+      const boardId = 'board-1';
+      const subtasksIds = ['sub-1', 'sub-2'];
+      const expectedResult = { message: 'Subtasks deleted successfully' };
+
+      mockSubtaskService.deleteManySubtask.mockResolvedValue(expectedResult);
+
+      const result = await controller.deleteManySubtask(boardId, subtasksIds);
+
+      expect(result).toEqual(expectedResult);
+      expect(mockSubtaskService.deleteManySubtask).toHaveBeenCalledWith(
+        boardId,
+        subtasksIds,
       );
     });
   });

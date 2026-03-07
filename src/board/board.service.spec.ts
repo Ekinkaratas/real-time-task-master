@@ -10,6 +10,7 @@ import {
   CreateBoardDto,
   UpdateToBoardDto,
 } from 'libs/contracts/src/boards';
+import { BoardGateway } from '../events/board.gateway';
 
 describe('BoardService', () => {
   let service: BoardService;
@@ -41,12 +42,19 @@ describe('BoardService', () => {
     findIdByEmail: jest.fn(),
   };
 
+  const mockBoardGateway = {
+    broadcastBoardCreated: jest.fn(),
+    broadcastBoardUpdate: jest.fn(),
+    broadcastBoardDelete: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BoardService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: UserService, useValue: mockUserService },
+        { provide: BoardGateway, useValue: mockBoardGateway },
       ],
     }).compile();
 

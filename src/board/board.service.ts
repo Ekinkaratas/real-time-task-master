@@ -13,12 +13,14 @@ import {
   CreateBoardDto,
   UpdateToBoardDto,
 } from 'contracts/boards';
+import { BoardGateway } from '../events/board.gateway';
 
 @Injectable()
 export class BoardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
+    private readonly gateway: BoardGateway,
   ) {}
 
   async createBoard(createBoardDto: CreateBoardDto, userId: string) {
@@ -42,6 +44,8 @@ export class BoardService {
           status: EnrollmentStatus.ACCEPTED,
         },
       });
+
+      this.gateway.broadcastBoardCreated(board.id, board);
 
       return board;
     });
@@ -67,6 +71,10 @@ export class BoardService {
           role: userDto.role ? userDto.role : BoardMemberRole.MEMBER,
         },
       });
+
+      const updatedBoard = await this.findOneBoard(boardId);
+      this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
       return { message: 'User invited to board successfully' };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -98,6 +106,10 @@ export class BoardService {
       await this.prisma.boardMember.delete({
         where: { boardId_userId: { boardId, userId } },
       });
+
+      const updatedBoard = await this.findOneBoard(boardId);
+      this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
       return { message: 'User removed from board successfully' };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -128,6 +140,9 @@ export class BoardService {
         },
       });
 
+      const updatedBoard = await this.findOneBoard(boardId);
+      this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
       return { message: 'Invitation accepted successfully' };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -156,6 +171,9 @@ export class BoardService {
           },
         },
       });
+
+      const updatedBoard = await this.findOneBoard(boardId);
+      this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
 
       return { message: 'Invitation rejected' };
     } catch (error) {
@@ -237,12 +255,16 @@ export class BoardService {
 
   async updateBoard(boardId: string, updateBoardDto: UpdateToBoardDto) {
     try {
-      return await this.prisma.board.update({
+      const board = await this.prisma.board.update({
         where: {
           id: boardId,
         },
         data: updateBoardDto,
       });
+
+      this.gateway.broadcastBoardUpdate(boardId, board);
+
+      return board;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2025') {
@@ -262,6 +284,9 @@ export class BoardService {
           id: boardId,
         },
       });
+
+      this.gateway.broadcastBoardDelete(boardId);
+
       return { message: 'Board deleted successfully' };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
