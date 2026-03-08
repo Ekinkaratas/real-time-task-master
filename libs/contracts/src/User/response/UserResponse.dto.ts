@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { UserRole, UserStatus } from '@prisma/client';
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class userForAuthResponse {
+export class UserResponse {
   @ApiProperty({ example: '1' })
   @IsString()
   @IsNotEmpty()

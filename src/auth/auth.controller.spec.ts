@@ -1,16 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-
 import { AccessTokenGuard } from '../common/guards/access-token.guard';
 import { RefreshTokenGuard } from '../common/guards/refresh-token.guard';
-
 import {
-  authRegisterDto,
-  authLogin,
   authClientResponseDto,
+  authLogin,
+  authRegisterDto,
   tokensPayload,
-} from 'libs/contracts/src/Auth';
+  UpdatePasswordDto,
+} from 'contracts/Auth';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -22,6 +21,7 @@ describe('AuthController', () => {
     login: jest.fn(),
     updateTokens: jest.fn(),
     updateAccessToken: jest.fn(),
+    updatePassword: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -49,94 +49,92 @@ describe('AuthController', () => {
   });
 
   describe('register', () => {
-    it('kayıt bilgilerini servise iletmeli ve yanıt dönmeli', async () => {
-      const dto: authRegisterDto = {
+    it('Kayit DTO sunu servise iletmeli ve sonucu dönmeli', async () => {
+      const dto = {
         email: 'test@test.com',
-        password: 'password123',
-        firstname: 'Test firstname',
-        lastname: 'Test lastname',
-      };
-
-      const expectedResult = {
-        access_Token: 'access123',
-        refresh_Token: 'refresh123',
-        userData: { id: 'user-1', email: 'test@test.com' },
+        password: '123',
+      } as authRegisterDto;
+      const expectedResponse = {
+        access_Token: 'token_123',
       } as unknown as authClientResponseDto;
 
-      mockAuthService.register.mockResolvedValue(expectedResult);
+      mockAuthService.register.mockResolvedValue(expectedResponse);
 
       const result = await controller.register(dto);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expectedResponse);
       expect(mockAuthService.register).toHaveBeenCalledWith(dto);
     });
   });
 
   describe('login', () => {
-    it('giriş bilgilerini servise iletmeli ve tokenları dönmeli', async () => {
-      const dto: authLogin = {
-        email: 'test@test.com',
-        password: 'password123',
-      };
-
-      const expectedResult = {
-        access_Token: 'access123',
-        refresh_Token: 'refresh123',
-        userData: { id: 'user-1', email: 'test@test.com' },
+    it('Giriş DTO sunu servise iletmeli ve sonucu dönmeli', async () => {
+      const dto = { email: 'test@test.com', password: '123' } as authLogin;
+      const expectedResponse = {
+        access_Token: 'token_123',
       } as unknown as authClientResponseDto;
 
-      mockAuthService.login.mockResolvedValue(expectedResult);
+      mockAuthService.login.mockResolvedValue(expectedResponse);
 
       const result = await controller.login(dto);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expectedResponse);
       expect(mockAuthService.login).toHaveBeenCalledWith(dto);
     });
   });
 
   describe('updateTokens', () => {
-    it('kullanıcı payload bilgisini servise iletip yeni tokenları dönmeli', async () => {
+    it('Kullanici payload unu servise iletip yeni tokenleri dönmeli', async () => {
       const userPayload = {
         id: 'user-1',
         email: 'test@test.com',
       } as unknown as tokensPayload;
-
-      const expectedResult = {
-        access_Token: 'new_access',
-        refresh_Token: 'new_refresh',
-        userData: userPayload,
+      const expectedResponse = {
+        access_Token: 'new_token_123',
       } as unknown as authClientResponseDto;
 
-      mockAuthService.updateTokens.mockResolvedValue(expectedResult);
+      mockAuthService.updateTokens.mockResolvedValue(expectedResponse);
 
       const result = await controller.updateTokens(userPayload);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expectedResponse);
       expect(mockAuthService.updateTokens).toHaveBeenCalledWith(userPayload);
     });
   });
 
   describe('updateAccessToken', () => {
-    it('userId ve Request içindeki refreshToken bilgisini servise iletmeli', async () => {
+    it('Kullanici ID sini ve Refresh Token i servise iletip yeni access token i dönmeli', async () => {
       const userId = 'user-1';
-      const refreshTokenValue = 'my_refresh_token';
+      const req = { refreshToken: 'my_refresh_token' } as unknown as Request;
+      const expectedResponse = { access_token: 'new_access_token_123' };
 
-      const mockRequest = {
-        refreshToken: refreshTokenValue,
-      } as unknown as Request;
+      mockAuthService.updateAccessToken.mockResolvedValue(expectedResponse);
 
-      const expectedResult = { access_token: 'new_access_token_only' };
+      const result = await controller.updateAccessToken(userId, req);
 
-      mockAuthService.updateAccessToken.mockResolvedValue(expectedResult);
-
-      const result = await controller.updateAccessToken(userId, mockRequest);
-
-      expect(result).toEqual(expectedResult);
-
+      expect(result).toEqual(expectedResponse);
       expect(mockAuthService.updateAccessToken).toHaveBeenCalledWith(
         userId,
-        refreshTokenValue,
+        'my_refresh_token',
       );
+    });
+  });
+
+  describe('updatePassword', () => {
+    it('Kullanici ID sini ve Şifre DTO sunu servise iletip mesaj dönmeli', async () => {
+      const userId = 'user-1';
+      const dto = {
+        oldPassword: 'old',
+        newPassword: 'new',
+      } as UpdatePasswordDto;
+      const expectedResponse = { message: 'Password updated successfully' };
+
+      mockAuthService.updatePassword.mockResolvedValue(expectedResponse);
+
+      const result = await controller.updatePassword(userId, dto);
+
+      expect(result).toEqual(expectedResponse);
+      expect(mockAuthService.updatePassword).toHaveBeenCalledWith(userId, dto);
     });
   });
 });

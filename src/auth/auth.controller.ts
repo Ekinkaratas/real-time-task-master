@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Patch,
   Post,
   Req,
   UseFilters,
@@ -17,6 +18,7 @@ import {
   authLogin,
   authRegisterDto,
   tokensPayload,
+  UpdatePasswordDto,
 } from 'contracts/Auth';
 
 @ApiTags('auth')
@@ -25,30 +27,30 @@ import {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('/r')
   @ApiOperation({ summary: 'creates a new user' })
+  @Post('/r')
   register(@Body() dto: authRegisterDto): Promise<authClientResponseDto> {
     return this.authService.register(dto);
   }
 
-  @Post('/L')
   @ApiOperation({ summary: 'user information is verified' })
+  @Post('/L')
   login(@Body() dto: authLogin): Promise<authClientResponseDto> {
     return this.authService.login(dto);
   }
 
+  @ApiOperation({ summary: 'updates user tokens' })
   @UseGuards(AccessTokenGuard)
   @Post('/newTokens')
-  @ApiOperation({ summary: 'updates user tokens' })
   updateTokens(
     @CurrentUser() user: tokensPayload,
   ): Promise<authClientResponseDto> {
     return this.authService.updateTokens(user);
   }
 
+  @ApiOperation({ summary: 'updates user access token' })
   @UseGuards(RefreshTokenGuard)
   @Post('/newAccessToken')
-  @ApiOperation({ summary: 'updates user access token' })
   updateAccessToken(
     @CurrentUser('id') userId: string,
     @Req() req: Request,
@@ -57,5 +59,14 @@ export class AuthController {
       userId,
       req['refreshToken'] as string,
     );
+  }
+
+  @UseGuards(AccessTokenGuard)
+  @Patch('/update-password')
+  updatePassword(
+    @CurrentUser('id') userId: string,
+    @Body() UpdatePasswordDto: UpdatePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.updatePassword(userId, UpdatePasswordDto);
   }
 }

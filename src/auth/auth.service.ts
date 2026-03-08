@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   UnauthorizedException,
@@ -13,6 +15,7 @@ import {
   authLogin,
   authRegisterDto,
   tokensPayload,
+  UpdatePasswordDto,
 } from 'contracts/Auth';
 import { toUserRegisterDto } from 'contracts/User';
 
@@ -184,5 +187,41 @@ export class AuthService {
     await this.redis.updateTokens(userId, newAccessToken);
 
     return { access_token: newAccessToken };
+  }
+
+  async updatePassword(
+    userId: string,
+    dto: UpdatePasswordDto,
+  ): Promise<{ message: string }> {
+    try {
+      if (dto.oldPassword === dto.newPassword) {
+        throw new BadRequestException(
+          'New password cannot be the same as the old password.',
+        );
+      }
+
+      const oldPasswordHash = await this.userService
+        .findUserWithPassword(userId)
+        .then((u) => u.password);
+
+      const flag = await argon.verify(oldPasswordHash, dto.oldPassword);
+
+      if (!flag)
+        throw new BadRequestException('Your old password is incorrect');
+
+      const newPasswordHash = await argon.hash(dto.newPassword);
+
+      const update = await this.userService.updateUserPassword(
+        userId,
+        newPasswordHash,
+      );
+
+      return update;
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+
+      console.error('An error while updating password : ' + e);
+      throw new InternalServerErrorException('A technical error occurred.');
+    }
   }
 }
