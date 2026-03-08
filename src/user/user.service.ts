@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import {
   userLoginDto,
   userRegisterDto,
@@ -16,10 +15,14 @@ import {
 } from 'libs/contracts/src/User';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { UserGateway } from '../events/user.gateway';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userGateway: UserGateway,
+  ) {}
 
   async register(dto: userRegisterDto): Promise<UserResponse> {
     try {
@@ -57,7 +60,6 @@ export class UserService {
         where: {
           email: dto.email,
         },
-
         select: {
           id: true,
           email: true,
@@ -70,7 +72,7 @@ export class UserService {
 
       return user as UserResponse;
     } catch (e) {
-      if (e instanceof PrismaClientKnownRequestError) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
         if (e.code === 'P2025') {
           throw new NotFoundException('User not found');
         }
@@ -102,6 +104,8 @@ export class UserService {
           leadTasks: { set: [] },
         },
       });
+
+      this.userGateway.broadcastUserDeleted(userId);
 
       return {
         message:
@@ -146,12 +150,21 @@ export class UserService {
     dto: UserUpdateDto,
   ): Promise<{ message: string }> {
     try {
-      await this.prisma.user.update({
+      const updateUser = await this.prisma.user.update({
         where: { id: userId },
         data: {
           ...dto,
         },
+
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          status: true,
+        },
       });
+
+      this.userGateway.broadcastUserUpdated(userId, updateUser);
 
       return { message: 'update is succesfuly ' };
     } catch (e) {

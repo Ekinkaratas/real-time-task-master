@@ -32,6 +32,12 @@ export class UserController {
     return this.service.getUserById(userId);
   }
 
+  @ApiOperation({ summary: 'Search users by email or name' })
+  @Get('search')
+  searchUsers(@Query('query') query: string): Promise<UserSearchResponseDto[]> {
+    return this.service.searchUsers(query);
+  }
+
   @ApiOperation({ summary: 'update user by Id' })
   @Patch('me')
   userUpdate(
@@ -39,12 +45,6 @@ export class UserController {
     @Body() userUpdateDto: UserUpdateDto,
   ): Promise<{ message: string }> {
     return this.service.updateUser(userId, userUpdateDto);
-  }
-
-  @ApiOperation({ summary: 'Search users by email or name' })
-  @Get('search')
-  searchUsers(@Query('query') query: string): Promise<UserSearchResponseDto[]> {
-    return this.service.searchUsers(query);
   }
 
   @ApiOperation({ summary: 'Delete current user account' })

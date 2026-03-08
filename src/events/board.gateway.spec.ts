@@ -162,7 +162,7 @@ describe('BoardGateway', () => {
     it('broadcastSubtaskUpdate yayinini doğru yapmali', () => {
       gateway.broadcastSubtaskUpdate(boardId, fakeSubtask);
       expect(toMock).toHaveBeenCalledWith(boardId);
-      expect(emitMock).toHaveBeenCalledWith('SubtaskUpdated', fakeSubtask);
+      expect(emitMock).toHaveBeenCalledWith('subtaskUpdated', fakeSubtask);
     });
   });
 });

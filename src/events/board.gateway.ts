@@ -10,7 +10,15 @@ import {
 
 import { Server, Socket } from 'socket.io';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  cors: {
+    origin: process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',')
+      : '*',
+    credentials: true,
+  },
+  namespace: 'board-events',
+})
 export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
@@ -81,10 +89,10 @@ export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   broadcastSubtaskUpdate(boardId: string, updateSubtask: any) {
-    this.server.to(boardId).emit('SubtaskUpdated', updateSubtask);
+    this.server.to(boardId).emit('subtaskUpdated', updateSubtask);
   }
 
   broadcastSubtaskDelete(boardId: string, deleteSubtask: any) {
-    this.server.to(boardId).emit('SubtaskDeleted', deleteSubtask);
+    this.server.to(boardId).emit('subtaskDelete', deleteSubtask);
   }
 }

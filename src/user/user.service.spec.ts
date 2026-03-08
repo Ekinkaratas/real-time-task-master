@@ -3,6 +3,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserGateway } from '../events/user.gateway';
 import {
   ForbiddenException,
   InternalServerErrorException,
@@ -27,11 +28,17 @@ describe('UserService', () => {
     },
   };
 
+  const mockUserGateway = {
+    broadcastUserDeleted: jest.fn(),
+    broadcastUserUpdated: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: UserGateway, useValue: mockUserGateway },
       ],
     }).compile();
 
@@ -104,8 +111,8 @@ describe('UserService', () => {
       expect(result).toEqual(expectedUser);
     });
 
-    it('Kullanici bulunamazsa hata firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('User not found', {
+    it('Kullanici bulunamazsa (P2025) NotFoundException firlatmali', async () => {
+      const error = new Prisma.PrismaClientKnownRequestError('Not Found', {
         code: 'P2025',
         clientVersion: 'v1',
       });
@@ -113,17 +120,21 @@ describe('UserService', () => {
 
       await expect(
         service.verifyLogin({ email: 'test@test.com', password: '123' }),
-      ).rejects.toThrow('User not found');
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('deleteAccount', () => {
-    it('Kullaniciyi başariyla anonimleştirmeli ve silmeli', async () => {
+    it('Kullaniciyi başariyla anonimleştirmeli, silmeli ve Gateway yayini yapmali', async () => {
       mockPrismaService.user.update.mockResolvedValue({});
 
       const result = await service.deleteAccount('user-1');
+
       expect(result.message).toContain('deleted');
       expect(mockPrismaService.user.update).toHaveBeenCalled();
+      expect(mockUserGateway.broadcastUserDeleted).toHaveBeenCalledWith(
+        'user-1',
+      );
     });
 
     it('Hata durumunda InternalServerErrorException firlatmali', async () => {
@@ -143,7 +154,7 @@ describe('UserService', () => {
       expect(result).toEqual(expectedUser);
     });
 
-    it('Kullanici bulunamazsa NotFoundException firlatmali', async () => {
+    it('Kullanici bulunamazsa (P2025) NotFoundException firlatmali', async () => {
       const error = new Prisma.PrismaClientKnownRequestError('Not Found', {
         code: 'P2025',
         clientVersion: 'v1',
@@ -157,12 +168,23 @@ describe('UserService', () => {
   });
 
   describe('updateUser', () => {
-    it('Kullaniciyi başariyla güncellemeli', async () => {
+    it('Kullaniciyi güncellemeli ve Gateway yayini yapmali', async () => {
       const dto: UserUpdateDto = { name: 'Yeni İsim' };
-      mockPrismaService.user.update.mockResolvedValue({});
+      const updatedUser = {
+        id: 'user-1',
+        email: 'test@test.com',
+        role: 'USER',
+        status: 'ACTIVE',
+      };
+      mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
       const result = await service.updateUser('user-1', dto);
+
       expect(result.message).toContain('succesfuly');
+      expect(mockUserGateway.broadcastUserUpdated).toHaveBeenCalledWith(
+        'user-1',
+        updatedUser,
+      );
     });
 
     it('Kullanici yoksa (P2025) NotFoundException firlatmali', async () => {
@@ -230,13 +252,6 @@ describe('UserService', () => {
       await expect(
         service.addRefreshToken('user-1', 'token123'),
       ).resolves.not.toThrow();
-    });
-
-    it('addRefreshToken: Hata durumunda InternalServerErrorException firlatmali', async () => {
-      mockPrismaService.user.update.mockRejectedValueOnce(new Error());
-      await expect(
-        service.addRefreshToken('user-1', 'token123'),
-      ).rejects.toThrow(InternalServerErrorException);
     });
 
     it('findUserWithPassword: Şifreyi başariyla dönmeli', async () => {

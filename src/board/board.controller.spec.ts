@@ -58,7 +58,7 @@ describe('BoardController', () => {
     it('DTO ve userId parametrelerini servise iletip yeni panoyu dönmeli', async () => {
       const dto: CreateBoardDto = {
         title: 'Yeni Pano',
-        description: 'Açıklama',
+        description: 'Açiklama',
       };
       const userId = 'user-1';
       const expectedResult = { id: 'board-1', ...dto };

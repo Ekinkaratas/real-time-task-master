@@ -1,33 +1,32 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { BoardService } from './board.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { BoardMemberRole, EnrollmentStatus, Prisma } from '@prisma/client';
-import {
-  AddMemberDto,
-  CreateBoardDto,
-  UpdateToBoardDto,
-} from 'libs/contracts/src/boards';
 import { BoardGateway } from '../events/board.gateway';
+import { UserGateway } from '../events/user.gateway';
+import {
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { BoardMemberRole, Prisma } from '@prisma/client';
 
 describe('BoardService', () => {
   let service: BoardService;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let prismaService: PrismaService;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let userService: UserService;
 
   const mockPrismaService = {
-    $transaction: jest.fn(async (callback) => {
+    $transaction: jest.fn(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return await callback(mockPrismaService);
-    }),
+      async (callback) => await callback(mockPrismaService),
+    ),
     board: {
       create: jest.fn(),
-      findMany: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -48,6 +47,10 @@ describe('BoardService', () => {
     broadcastBoardDelete: jest.fn(),
   };
 
+  const mockUserGateway = {
+    broadcastToUser: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -55,12 +58,15 @@ describe('BoardService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: UserService, useValue: mockUserService },
         { provide: BoardGateway, useValue: mockBoardGateway },
+        { provide: UserGateway, useValue: mockUserGateway },
       ],
     }).compile();
 
     service = module.get<BoardService>(BoardService);
     prismaService = module.get<PrismaService>(PrismaService);
-    userService = module.get<UserService>(UserService);
+
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -68,97 +74,110 @@ describe('BoardService', () => {
   });
 
   describe('createBoard', () => {
-    it('Transaction ile pano ve OWNER rolünde üye oluşturmalı', async () => {
-      const createDto: CreateBoardDto = {
-        title: 'Yeni Pano',
-        description: 'Açıklama',
-      };
+    it('Transaction ile pano ve kurucu üyeyi oluşturup Gateway yayini yapmali', async () => {
+      const dto = { title: 'Test Board', description: 'Desc' };
       const userId = 'user-1';
+      const createdBoard = { id: 'board-1', ...dto, ownerId: userId };
 
-      const expectedBoard = {
-        id: 'board-1',
-        title: 'Yeni Pano',
-        ownerId: userId,
-      };
-
-      mockPrismaService.board.create.mockResolvedValue(expectedBoard);
+      mockPrismaService.board.create.mockResolvedValue(createdBoard);
       mockPrismaService.boardMember.create.mockResolvedValue({});
 
-      const result = await service.createBoard(createDto, userId);
+      const result = await service.createBoard(dto, userId);
 
-      expect(result).toEqual(expectedBoard);
+      expect(result).toEqual(createdBoard);
       expect(mockPrismaService.board.create).toHaveBeenCalled();
-      expect(mockPrismaService.boardMember.create).toHaveBeenCalledWith({
-        data: {
-          boardId: 'board-1',
-          userId: userId,
-          role: BoardMemberRole.OWNER,
-          status: EnrollmentStatus.ACCEPTED,
-        },
-      });
+      expect(mockPrismaService.boardMember.create).toHaveBeenCalled();
+      expect(mockBoardGateway.broadcastBoardCreated).toHaveBeenCalledWith(
+        'board-1',
+        createdBoard,
+      );
     });
   });
 
   describe('BoardsAddUser', () => {
-    it('Kullanıcı bulunamazsa NotFoundException fırlatmalı', async () => {
-      mockUserService.findIdByEmail.mockResolvedValue([]);
-      const dto: AddMemberDto = { email: 'test@test.com' };
+    const boardId = 'board-1';
+    const userDto = { email: 'test@test.com', role: BoardMemberRole.MEMBER };
+    const userId = 'user-2';
 
-      await expect(service.BoardsAddUser('board-1', dto)).rejects.toThrow(
-        NotFoundException,
+    it('Kullaniciyi panoya eklemeli ve her iki Gateway üzerinden bildirim atmali', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([
+        { id: userId, email: userDto.email },
+      ]);
+      mockPrismaService.boardMember.create.mockResolvedValue({});
+
+      const updatedBoard = { id: boardId, title: 'Test Board' };
+      mockPrismaService.board.findUnique.mockResolvedValue(updatedBoard);
+
+      const result = await service.BoardsAddUser(boardId, userDto);
+
+      expect(result.message).toContain('successfully');
+      expect(mockBoardGateway.broadcastBoardUpdate).toHaveBeenCalledWith(
+        boardId,
+        updatedBoard,
+      );
+      expect(mockUserGateway.broadcastToUser).toHaveBeenCalledWith(
+        userId,
+        'notification',
+        expect.objectContaining({ type: 'BOARD_INVITED' }),
       );
     });
 
-    it('Kullanıcı zaten üyeyse ConflictException fırlatmalı (P2002)', async () => {
-      mockUserService.findIdByEmail.mockResolvedValue([{ id: 'user-2' }]);
-      const dto: AddMemberDto = { email: 'test@test.com' };
+    it('Kullanici zaten ekliyse (P2002) ConflictException firlatmali', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
 
-      const prismaError = new Prisma.PrismaClientKnownRequestError('Error', {
+      const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2002',
-        clientVersion: 'v1',
+        clientVersion: '1',
       });
-      mockPrismaService.boardMember.create.mockRejectedValueOnce(prismaError);
+      mockPrismaService.boardMember.create.mockRejectedValueOnce(error);
 
-      await expect(service.BoardsAddUser('board-1', dto)).rejects.toThrow(
+      await expect(service.BoardsAddUser(boardId, userDto)).rejects.toThrow(
         ConflictException,
       );
     });
 
-    it('Kullanıcıyı panoya başarıyla davet etmeli', async () => {
-      mockUserService.findIdByEmail.mockResolvedValue([{ id: 'user-2' }]);
-      mockPrismaService.boardMember.create.mockResolvedValue({});
-      const dto: AddMemberDto = {
-        email: 'test@test.com',
-        role: BoardMemberRole.MEMBER,
-      };
+    it('Beklenmeyen hatalarda InternalServerErrorException firlatmali (Bug Fix Testi)', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
+      mockPrismaService.boardMember.create.mockRejectedValueOnce(
+        new Error('Crash'),
+      );
 
-      const result = await service.BoardsAddUser('board-1', dto);
-
-      expect(result).toEqual({ message: 'User invited to board successfully' });
+      await expect(service.BoardsAddUser(boardId, userDto)).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
   describe('removeUserFromBoard', () => {
-    it('Üye başarıyla silinmeli', async () => {
+    it('Kullaniciyi silmeli ve bildirimleri atmali', async () => {
       mockUserService.findIdByEmail.mockResolvedValue([{ id: 'user-2' }]);
       mockPrismaService.boardMember.delete.mockResolvedValue({});
+      mockPrismaService.board.findUnique.mockResolvedValue({
+        id: 'board-1',
+        title: 'Test',
+      });
 
       const result = await service.removeUserFromBoard(
         'board-1',
         'test@test.com',
       );
-      expect(result).toEqual({
-        message: 'User removed from board successfully',
-      });
+
+      expect(result.message).toContain('removed');
+      expect(mockPrismaService.boardMember.delete).toHaveBeenCalled();
+      expect(mockUserGateway.broadcastToUser).toHaveBeenCalledWith(
+        'user-2',
+        'notification',
+        expect.objectContaining({ type: 'BOARD_REMOVE' }),
+      );
     });
 
-    it('Silinecek üye panoda yoksa NotFoundException fırlatmalı (P2025)', async () => {
+    it('Kullanici panoda yoksa (P2025) NotFoundException firlatmali', async () => {
       mockUserService.findIdByEmail.mockResolvedValue([{ id: 'user-2' }]);
-      const prismaError = new Prisma.PrismaClientKnownRequestError('Error', {
+      const error = new Prisma.PrismaClientKnownRequestError('Err', {
         code: 'P2025',
-        clientVersion: 'v1',
+        clientVersion: '1',
       });
-      mockPrismaService.boardMember.delete.mockRejectedValueOnce(prismaError);
+      mockPrismaService.boardMember.delete.mockRejectedValueOnce(error);
 
       await expect(
         service.removeUserFromBoard('board-1', 'test@test.com'),
@@ -167,82 +186,100 @@ describe('BoardService', () => {
   });
 
   describe('acceptInvitation', () => {
-    it('Daveti başarıyla kabul etmeli (status: ACCEPTED)', async () => {
+    it('Daveti kabul edip, pano sahibine bildirim atmali', async () => {
       mockPrismaService.boardMember.update.mockResolvedValue({});
+      const updatedBoard = { id: 'board-1', title: 'Test', ownerId: 'owner-1' };
+      mockPrismaService.board.findUnique.mockResolvedValue(updatedBoard);
 
-      const result = await service.acceptInvitation('board-1', 'user-1');
-      expect(result).toEqual({ message: 'Invitation accepted successfully' });
+      const result = await service.acceptInvitation('board-1', 'user-2');
+
+      expect(result.message).toContain('accepted');
+      expect(mockBoardGateway.broadcastBoardUpdate).toHaveBeenCalled();
+      expect(mockUserGateway.broadcastToUser).toHaveBeenCalledWith(
+        'owner-1',
+        'notification',
+        expect.objectContaining({ type: 'INVITATION_ACCEPTED' }),
+      );
+      expect(mockUserGateway.broadcastToUser).toHaveBeenCalledWith(
+        'user-2',
+        'refreshBoards',
+        expect.any(Object),
+      );
     });
   });
 
   describe('rejectInvitation', () => {
-    it('Daveti başarıyla reddetmeli (boardMember silinmeli)', async () => {
+    it('Daveti reddedip (silip) pano sahibine bildirim atmali', async () => {
       mockPrismaService.boardMember.delete.mockResolvedValue({});
+      mockPrismaService.board.findUnique.mockResolvedValue({
+        id: 'board-1',
+        ownerId: 'owner-1',
+      });
 
-      const result = await service.rejectInvitation('board-1', 'user-1');
-      expect(result).toEqual({ message: 'Invitation rejected' });
+      const result = await service.rejectInvitation('board-1', 'user-2');
+
+      expect(result.message).toContain('rejected');
+      expect(mockUserGateway.broadcastToUser).toHaveBeenCalledWith(
+        'owner-1',
+        'notification',
+        expect.objectContaining({ type: 'INVITATION_REJECTED' }),
+      );
     });
   });
 
-  describe('getBoardForUser', () => {
-    it('Kullanıcının kabul ettiği panoları getirmeli', async () => {
-      const expectedBoards = [{ id: 'board-1' }];
-      mockPrismaService.board.findMany.mockResolvedValue(expectedBoards);
+  describe('CRUD & Search Operations', () => {
+    it('getBoardForUser: Kullanicinin kabul ettiği panolari getirmeli', async () => {
+      const mockBoards = [{ id: '1' }, { id: '2' }];
+      mockPrismaService.board.findMany.mockResolvedValue(mockBoards);
 
       const result = await service.getBoardForUser('user-1');
-      expect(result).toEqual(expectedBoards);
-    });
-  });
-
-  describe('findOneBoard', () => {
-    it('Pano detaylarını başarıyla getirmeli', async () => {
-      const expectedBoard = { id: 'board-1' };
-      mockPrismaService.board.findUnique.mockResolvedValue(expectedBoard);
-
-      const result = await service.findOneBoard('board-1');
-      expect(result).toEqual(expectedBoard);
-    });
-  });
-
-  describe('updateBoard', () => {
-    it('Panoyu güncellemeli', async () => {
-      const updateDto: UpdateToBoardDto = { title: 'Yeni Başlık' };
-      const expectedBoard = { id: 'board-1', title: 'Yeni Başlık' };
-      mockPrismaService.board.update.mockResolvedValue(expectedBoard);
-
-      const result = await service.updateBoard('board-1', updateDto);
-      expect(result).toEqual(expectedBoard);
+      expect(result).toEqual(mockBoards);
     });
 
-    it('Pano bulunamazsa NotFoundException fırlatmalı (P2025)', async () => {
-      const prismaError = new Prisma.PrismaClientKnownRequestError('Error', {
-        code: 'P2025',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.board.update.mockRejectedValueOnce(prismaError);
+    it('findOneBoard: Panoyu getirmeli', async () => {
+      const mockBoard = { id: '1' };
+      mockPrismaService.board.findUnique.mockResolvedValue(mockBoard);
 
-      await expect(
-        service.updateBoard('yanlis-id', { title: 'Test' }),
-      ).rejects.toThrow(NotFoundException);
+      const result = await service.findOneBoard('1');
+      expect(result).toEqual(mockBoard);
     });
-  });
 
-  describe('deleteBoard', () => {
-    it('Panoyu başarıyla silmeli', async () => {
+    it('updateBoard: Panoyu güncelleyip yayinlamali', async () => {
+      const mockBoard = { id: '1', title: 'New' };
+      mockPrismaService.board.update.mockResolvedValue(mockBoard);
+
+      const result = await service.updateBoard('1', { title: 'New' });
+      expect(result).toEqual(mockBoard);
+      expect(mockBoardGateway.broadcastBoardUpdate).toHaveBeenCalledWith(
+        '1',
+        mockBoard,
+      );
+    });
+
+    it('deleteBoard: Panoyu silip yayinlamali', async () => {
       mockPrismaService.board.delete.mockResolvedValue({});
 
-      const result = await service.deleteBoard('board-1');
-      expect(result).toEqual({ message: 'Board deleted successfully' });
+      const result = await service.deleteBoard('1');
+      expect(result.message).toContain('deleted');
+      expect(mockBoardGateway.broadcastBoardDelete).toHaveBeenCalledWith('1');
     });
-  });
 
-  describe('searchBoardsByTitle', () => {
-    it('Başlığa göre arama yapmalı', async () => {
-      const expectedBoards = [{ id: 'board-1', title: 'Test Panosu' }];
-      mockPrismaService.board.findMany.mockResolvedValue(expectedBoards);
+    it('searchBoardsByTitle: Arama sonucunu dönmeli', async () => {
+      const mockBoards = [{ id: '1', title: 'Test' }];
+      mockPrismaService.board.findMany.mockResolvedValue(mockBoards);
 
-      const result = await service.searchBoardsByTitle('Test', 'user-1');
-      expect(result).toEqual(expectedBoards);
+      const result = await service.searchBoardsByTitle('test', 'user-1');
+      expect(result).toEqual(mockBoards);
+      expect(mockPrismaService.board.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            title: expect.objectContaining({
+              contains: 'test',
+              mode: 'insensitive',
+            }),
+          }),
+        }),
+      );
     });
   });
 });

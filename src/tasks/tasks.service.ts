@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -14,6 +16,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { UserService } from '../user/user.service';
 import { BoardGateway } from '../events/board.gateway';
+import { UserGateway } from '../events/user.gateway';
 
 @Injectable()
 export class TasksService {
@@ -21,6 +24,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
     private readonly boardGateway: BoardGateway,
+    private readonly userGateway: UserGateway,
   ) {}
 
   private async lastTask(columnsId: string) {
@@ -109,12 +113,39 @@ export class TasksService {
     userEmails: string[],
   ): Promise<TaskResponseDto> {
     try {
+      const currentTask = await this.prisma.task.findUnique({
+        where: { id: taskId },
+        include: { column: true },
+      });
+
+      if (!currentTask) {
+        throw new NotFoundException('Task not found');
+      }
+
+      const boardId = currentTask.column.boardId;
+
       const users = await this.userService.findIdByEmail(userEmails);
-
-      if (!users.length)
+      if (!users.length) {
         throw new NotFoundException('No users found for given emails');
+      }
 
-      const assigneesConnect = users.map((user) => ({ id: user.id }));
+      const userIds = users.map((user) => user.id);
+
+      const validMembers = await this.prisma.boardMember.findMany({
+        where: {
+          boardId: boardId,
+          userId: { in: userIds },
+          status: 'ACCEPTED',
+        },
+      });
+
+      if (validMembers.length !== userIds.length) {
+        throw new BadRequestException(
+          'Cannot assign task. One or more users are not active members of this board.',
+        );
+      }
+
+      const assigneesConnect = userIds.map((id) => ({ id }));
 
       const task = await this.prisma.task.update({
         where: { id: taskId },
@@ -128,9 +159,18 @@ export class TasksService {
         },
       });
 
-      const boardId = task.column.boardId;
-
       this.boardGateway.broadcastTaskUpdate(boardId, task);
+
+      for (const assignee of assigneesConnect) {
+        this.userGateway.broadcastToUser(assignee.id, 'notification', {
+          type: 'TASK_ASSIGNED',
+          title: 'New Job Assignment! 🎯',
+          message: `You have been assigned to the '${task.title}' task.`,
+          boardId: boardId,
+          taskId: task.id,
+        });
+      }
+
       return this.getTaskById(taskId);
     } catch (e) {
       if (
@@ -337,9 +377,7 @@ export class TasksService {
     leadEmail: string,
   ): Promise<TaskResponseDto> {
     try {
-      const users = this.userService.findIdByEmail([leadEmail]);
-
-      const user = await users;
+      const user = await this.userService.findIdByEmail([leadEmail]);
 
       if (!user || user.length === 0) {
         throw new NotFoundException('No user found for given email');
@@ -434,13 +472,26 @@ export class TasksService {
 
       this.boardGateway.broadcastTaskUpdate(boardId, task);
 
+      for (const assignee of assigneesdisconnect) {
+        this.userGateway.broadcastToUser(assignee.id, 'notification', {
+          type: 'TASK_UNASSIGNED',
+          title: 'You have been dismissed from your position.',
+          message: `You have been removed from the '${task.title}' task.`,
+          boardId: boardId,
+        });
+      }
+
       return this.getTaskById(taskId);
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2025'
-      ) {
-        throw new NotFoundException('Task not found');
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2025') {
+          throw new NotFoundException('Task or user relation not found');
+        }
+        if (e.code === 'P2003') {
+          throw new ConflictException(
+            'Cannot remove assignee due to a database constraint. This user might be strictly tied to this task.',
+          );
+        }
       }
 
       if (e instanceof HttpException) throw e;

@@ -14,6 +14,7 @@ import {
   UpdateToBoardDto,
 } from 'contracts/boards';
 import { BoardGateway } from '../events/board.gateway';
+import { UserGateway } from '../events/user.gateway';
 
 @Injectable()
 export class BoardService {
@@ -21,6 +22,7 @@ export class BoardService {
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
     private readonly gateway: BoardGateway,
+    private readonly userGateway: UserGateway,
   ) {}
 
   async createBoard(createBoardDto: CreateBoardDto, userId: string) {
@@ -73,7 +75,15 @@ export class BoardService {
       });
 
       const updatedBoard = await this.findOneBoard(boardId);
+
       this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
+      this.userGateway.broadcastToUser(userId, 'notification', {
+        type: 'BOARD_INVITED',
+        title: 'New Board Invitation!',
+        message: `You have successfully added to the board named ${updatedBoard?.title}.`,
+        boardId: updatedBoard?.id,
+      });
 
       return { message: 'User invited to board successfully' };
     } catch (error) {
@@ -83,11 +93,11 @@ export class BoardService {
             'This user has already been invited or is a member of the board.',
           );
         }
-        throw error;
       }
+      throw new InternalServerErrorException(
+        'An error occurred while inviting the user.',
+      );
     }
-
-    return { message: 'User invited to board successfully' };
   }
 
   async removeUserFromBoard(
@@ -108,7 +118,15 @@ export class BoardService {
       });
 
       const updatedBoard = await this.findOneBoard(boardId);
+
       this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
+      this.userGateway.broadcastToUser(userId, 'notification', {
+        type: 'BOARD_REMOVE',
+        title: 'You have been removed from the Board!',
+        message: `You have successfully deleted to the board named ${updatedBoard?.title}.`,
+        boardId: updatedBoard?.id,
+      });
 
       return { message: 'User removed from board successfully' };
     } catch (error) {
@@ -141,7 +159,21 @@ export class BoardService {
       });
 
       const updatedBoard = await this.findOneBoard(boardId);
+
       this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
+      if (updatedBoard?.ownerId) {
+        this.userGateway.broadcastToUser(updatedBoard.ownerId, 'notification', {
+          type: 'INVITATION_ACCEPTED',
+          title: 'Invitation Accepted! 🎉',
+          message: `A user joined the ‘${updatedBoard.title}’ board.`,
+          boardId: updatedBoard.id,
+        });
+      }
+
+      this.userGateway.broadcastToUser(userId, 'refreshBoards', {
+        message: 'Panolar listeniz güncelleniyor...',
+      });
 
       return { message: 'Invitation accepted successfully' };
     } catch (error) {
@@ -173,7 +205,17 @@ export class BoardService {
       });
 
       const updatedBoard = await this.findOneBoard(boardId);
+
       this.gateway.broadcastBoardUpdate(boardId, updatedBoard);
+
+      if (updatedBoard?.ownerId) {
+        this.userGateway.broadcastToUser(updatedBoard.ownerId, 'notification', {
+          type: 'INVITATION_REJECTED',
+          title: 'Invitation Rejected',
+          message: `A user didn't join the ‘${updatedBoard.title}’ board.`,
+          boardId: updatedBoard.id,
+        });
+      }
 
       return { message: 'Invitation rejected' };
     } catch (error) {
