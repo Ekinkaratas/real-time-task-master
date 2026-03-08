@@ -10,6 +10,7 @@ import { BoardModule } from './board/board.module';
 import { ColumnsModule } from './columns/columns.module';
 import { TasksModule } from './tasks/tasks.module';
 import { SubtaskModule } from './subtask/subtask.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -24,6 +25,12 @@ import { SubtaskModule } from './subtask/subtask.module';
     ColumnsModule,
     TasksModule,
     SubtaskModule,
+    ThrottlerModule.forRoot([
+      {
+        ttl: 65000,
+        limit: 13,
+      },
+    ]),
   ],
   controllers: [AppController],
   providers: [AppService],
