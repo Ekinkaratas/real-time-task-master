@@ -1,19 +1,41 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserGateway } from './user.gateway';
-import { Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UserResponse } from 'contracts/User';
 
 describe('UserGateway', () => {
   let gateway: UserGateway;
 
+  let mockJwtService: { verifyAsync: jest.Mock };
+  let mockConfigService: { get: jest.Mock };
+
   let emitMock: jest.Mock;
   let toMock: jest.Mock;
 
+  const createMockClient = (authToken?: string, authHeader?: string) => ({
+    id: 'socket-123',
+    handshake: {
+      auth: authToken ? { token: authToken } : {},
+      headers: authHeader ? { authorization: authHeader } : {},
+    },
+    data: {} as { user?: any },
+    disconnect: jest.fn(),
+    join: jest.fn(),
+  });
+
   beforeEach(async () => {
+    mockJwtService = { verifyAsync: jest.fn() };
+    mockConfigService = { get: jest.fn().mockReturnValue('super-secret-key') };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UserGateway],
+      providers: [
+        UserGateway,
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
     }).compile();
 
     gateway = module.get<UserGateway>(UserGateway);
@@ -27,54 +49,116 @@ describe('UserGateway', () => {
     } as any;
 
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('Bağlanti Yönetimi (Connection & Disconnection)', () => {
-    it('Kullanici bağlandiğinda log atmali', () => {
-      const mockClient = { id: 'socket-123' } as Socket;
-      gateway.handleConnection(mockClient);
+  describe('handleConnection (Kimlik Doğrulama)', () => {
+    it('Token yoksa bağlantiyi kesmeli (disconnect)', async () => {
+      const client = createMockClient();
+
+      await gateway.handleConnection(client as any);
+
+      expect(client.disconnect).toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
-        'One connected UserGateway: socket-123',
+        'Connection rejected (No token): socket-123',
       );
     });
 
-    it('Kullanici koptuğunda log atmali', () => {
-      const mockClient = { id: 'socket-456' } as Socket;
-      gateway.handleDisconnect(mockClient);
+    it('.env içinde SECRET_KEY yoksa bağlantiyi kesmeli', async () => {
+      mockConfigService.get.mockReturnValueOnce(undefined);
+      const client = createMockClient('valid-token');
+
+      await gateway.handleConnection(client as any);
+
+      expect(client.disconnect).toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith(
+        'JWT Secret is not defined in environment variables.',
+      );
+    });
+
+    it('Auth.token ile gelen geçerli kullaniciyi doğrulamali ve veriyi sokete eklemeli', async () => {
+      const client = createMockClient('valid-token');
+      const mockPayload = { id: 'user-1', email: 'test@test.com' };
+      mockJwtService.verifyAsync.mockResolvedValue(mockPayload);
+
+      await gateway.handleConnection(client as any);
+
+      expect(mockJwtService.verifyAsync).toHaveBeenCalledWith('valid-token', {
+        secret: 'super-secret-key',
+      });
+      expect(client.data.user).toEqual(mockPayload);
       expect(console.log).toHaveBeenCalledWith(
-        'One disconnect UserGateway: socket-456',
+        'User connected: socket-123, User ID: user-1',
+      );
+    });
+
+    it('Headers içinden gelen geçerli Bearer tokeni doğrulamali', async () => {
+      const client = createMockClient(undefined, 'Bearer header-token');
+      const mockPayload = { id: 'user-2', email: 'test2@test.com' };
+      mockJwtService.verifyAsync.mockResolvedValue(mockPayload);
+
+      await gateway.handleConnection(client as any);
+
+      expect(mockJwtService.verifyAsync).toHaveBeenCalledWith('header-token', {
+        secret: 'super-secret-key',
+      });
+      expect(client.data.user).toEqual(mockPayload);
+    });
+
+    it('Token geçersizse (hata firlatirsa) bağlantiyi kesmeli', async () => {
+      const client = createMockClient('invalid-token');
+      mockJwtService.verifyAsync.mockRejectedValue(new Error('JWT Expired'));
+
+      await gateway.handleConnection(client as any);
+
+      expect(client.disconnect).toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'Connection rejected (Invalid token): socket-123',
       );
     });
   });
 
-  describe('handleJoinUser', () => {
-    it('Kullaniciyi kendi özel odasina (Room) dahil etmeli', async () => {
-      const userId = 'user-1';
-      const joinMock = jest.fn();
-      const mockClient = {
-        id: 'socket-123',
-        join: joinMock,
-      } as unknown as Socket;
+  describe('handleDisconnect', () => {
+    it('Kullanici koptuğunda log atmali', () => {
+      const client = createMockClient();
+      gateway.handleDisconnect(client as any);
+      expect(console.log).toHaveBeenCalledWith(
+        'One disconnect UserGateway: socket-123',
+      );
+    });
+  });
 
-      await gateway.handleJoinUser(userId, mockClient);
+  describe('handleJoinUser (Odaya Katilma)', () => {
+    it('Sokette kullanici ID varsa (doğrulanmişsa) odaya katilmali', async () => {
+      const client = createMockClient();
+      client.data.user = { id: 'user-1', email: 'test@test.com' };
 
-      expect(joinMock).toHaveBeenCalledWith('user-room-user-1');
+      await gateway.handleJoinUser(client as any);
+
+      expect(client.join).toHaveBeenCalledWith('user-room-user-1');
       expect(console.log).toHaveBeenCalledWith(
         'User with Socket ID socket-123 joined personal room: user-room-user-1',
       );
     });
+
+    it('Sokette kullanici ID yoksa işlemi sessizce iptal etmeli (Erken Dönüş)', async () => {
+      const client = createMockClient();
+      client.data.user = undefined;
+
+      await gateway.handleJoinUser(client as any);
+
+      expect(client.join).not.toHaveBeenCalled();
+    });
   });
 
-  describe('Genel Yayinlar (Broadcasts)', () => {
-    it('broadcastUserUpdated: Tüm sisteme kullanici güncellemesini yaymali', () => {
-      const userId = 'user-1';
-      const updatedData: Partial<UserResponse> = { name: 'Ekin' };
-
-      gateway.broadcastUserUpdated(userId, updatedData);
+  describe('Yayin Metotlari (Broadcasts)', () => {
+    it('broadcastUserUpdated: Tüm kullanicilara güncelleme sinyali göndermeli', () => {
+      const updatedUser: Partial<UserResponse> = { name: 'Ekin' };
+      gateway.broadcastUserUpdated('user-1', updatedUser);
 
       expect(emitMock).toHaveBeenCalledWith('userUpdated', {
         userId: 'user-1',
@@ -82,25 +166,18 @@ describe('UserGateway', () => {
       });
     });
 
-    it('broadcastUserDeleted: Tüm sisteme hesap anonimleşme/silinme bilgisini yaymali', () => {
-      const userId = 'user-2';
-
-      gateway.broadcastUserDeleted(userId);
+    it('broadcastUserDeleted: Hesap silinme sinyalini yaymali', () => {
+      gateway.broadcastUserDeleted('user-2');
 
       expect(emitMock).toHaveBeenCalledWith('userDeleted', {
         userId: 'user-2',
         message: 'User account has been anonymized.',
       });
     });
-  });
 
-  describe('Kişiye Özel Bildirim (Direct Message)', () => {
-    it('broadcastToUser: Sadece ilgili kullanicinin odasina özel sinyal göndermeli', () => {
-      const userId = 'user-3';
-      const eventName = 'notification';
-      const payload = { title: 'Yeni Görev', message: 'Atandiniz.' };
-
-      gateway.broadcastToUser(userId, eventName, payload);
+    it('broadcastToUser: İlgili kullanicinin özel odasina sinyal göndermeli', () => {
+      const payload = { test: 'data' };
+      gateway.broadcastToUser('user-3', 'notification', payload);
 
       expect(toMock).toHaveBeenCalledWith('user-room-user-3');
       expect(emitMock).toHaveBeenCalledWith('notification', payload);

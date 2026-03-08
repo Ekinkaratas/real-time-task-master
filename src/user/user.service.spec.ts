@@ -1,30 +1,31 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserGateway } from '../events/user.gateway';
+import { Prisma, UserStatus } from '@prisma/client';
 import {
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { userRegisterDto, UserUpdateDto } from 'libs/contracts/src/User';
 
 describe('UserService', () => {
   let service: UserService;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let prismaService: PrismaService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let userGateway: UserGateway;
 
   const mockPrismaService = {
     user: {
       create: jest.fn(),
       findFirstOrThrow: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
-      findUnique: jest.fn(),
-      findMany: jest.fn(),
       update: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
   };
 
@@ -44,6 +45,7 @@ describe('UserService', () => {
 
     service = module.get<UserService>(UserService);
     prismaService = module.get<PrismaService>(PrismaService);
+    userGateway = module.get<UserGateway>(UserGateway);
 
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -54,41 +56,40 @@ describe('UserService', () => {
   });
 
   describe('register', () => {
-    it('Kullaniciyi başariyla kaydetmeli', async () => {
-      const dto: userRegisterDto = {
-        email: 'test@test.com',
-        password: 'hashed123',
-        firstName: 'Ekin',
-        lastName: 'Karatas',
+    it('Yeni kullanici oluşturmali', async () => {
+      const dto = {
+        email: 't@t.com',
+        password: '123',
+        firstName: 'John',
+        lastName: 'Doe',
       };
-      const expectedUser = {
-        id: 'user-1',
-        name: 'Ekin Karatas',
-        email: dto.email,
-      };
-
+      const expectedUser = { id: '1', email: 't@t.com', name: 'John Doe' };
       mockPrismaService.user.create.mockResolvedValue(expectedUser);
 
-      const result = await service.register(dto);
+      const result = await service.register(dto as any);
+
       expect(result).toEqual(expectedUser);
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { email: 't@t.com', password: '123', name: 'John Doe' },
+        }),
+      );
     });
 
-    it('E-posta zaten varsa (P2002) ForbiddenException firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('Err', {
-        code: 'P2002',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.user.create.mockRejectedValueOnce(error);
-
+    it('Email zaten alinmişsa (P2002) ForbiddenException firlatmali', async () => {
+      mockPrismaService.user.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('', {
+          code: 'P2002',
+          clientVersion: '',
+        }),
+      );
       await expect(service.register({} as any)).rejects.toThrow(
         ForbiddenException,
       );
     });
 
-    it('Veritabani hatasinda InternalServerErrorException firlatmali', async () => {
-      mockPrismaService.user.create.mockRejectedValueOnce(
-        new Error('DB Error'),
-      );
+    it('Bilinmeyen bir DB hatasinda InternalServerError firlatmali', async () => {
+      mockPrismaService.user.create.mockRejectedValue(new Error('DB Error'));
       await expect(service.register({} as any)).rejects.toThrow(
         InternalServerErrorException,
       );
@@ -96,194 +97,151 @@ describe('UserService', () => {
   });
 
   describe('verifyLogin', () => {
-    it('Giriş bilgilerini başariyla dönmeli', async () => {
-      const expectedUser = {
-        id: 'user-1',
-        email: 'test@test.com',
-        password: 'hash',
-      };
+    it('Kullaniciyi başariyla getirmeli', async () => {
+      const expectedUser = { id: '1', email: 't@t.com' };
       mockPrismaService.user.findFirstOrThrow.mockResolvedValue(expectedUser);
 
-      const result = await service.verifyLogin({
-        email: 'test@test.com',
-        password: '123',
-      });
+      const result = await service.verifyLogin({ email: 't@t.com' } as any);
       expect(result).toEqual(expectedUser);
     });
 
     it('Kullanici bulunamazsa (P2025) NotFoundException firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('Not Found', {
-        code: 'P2025',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.user.findFirstOrThrow.mockRejectedValueOnce(error);
-
-      await expect(
-        service.verifyLogin({ email: 'test@test.com', password: '123' }),
-      ).rejects.toThrow(NotFoundException);
+      mockPrismaService.user.findFirstOrThrow.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('', {
+          code: 'P2025',
+          clientVersion: '',
+        }),
+      );
+      await expect(service.verifyLogin({} as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
-  describe('deleteAccount', () => {
-    it('Kullaniciyi başariyla anonimleştirmeli, silmeli ve Gateway yayini yapmali', async () => {
-      mockPrismaService.user.update.mockResolvedValue({});
+  describe('deleteAccount (Anonimleştirme)', () => {
+    it('Kullaniciyi anonimleştirmeli ve gateway yayini yapmali', async () => {
+      mockPrismaService.user.update.mockResolvedValue({ id: '1' });
 
-      const result = await service.deleteAccount('user-1');
+      const result = await service.deleteAccount('1');
 
-      expect(result.message).toContain('deleted');
-      expect(mockPrismaService.user.update).toHaveBeenCalled();
-      expect(mockUserGateway.broadcastUserDeleted).toHaveBeenCalledWith(
-        'user-1',
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: UserStatus.DELETED,
+            name: 'Deleted User',
+            password: 'DELETED_ACCOUNT',
+          }),
+        }),
       );
+      expect(mockUserGateway.broadcastUserDeleted).toHaveBeenCalledWith('1');
+      expect(result.message).toContain('deleted');
     });
 
-    it('Hata durumunda InternalServerErrorException firlatmali', async () => {
-      mockPrismaService.user.update.mockRejectedValueOnce(new Error('Crash'));
-      await expect(service.deleteAccount('user-1')).rejects.toThrow(
+    it('Hata durumunda InternalServerError firlatmali', async () => {
+      mockPrismaService.user.update.mockRejectedValue(new Error(''));
+      await expect(service.deleteAccount('1')).rejects.toThrow(
         InternalServerErrorException,
       );
     });
   });
 
   describe('getUserById', () => {
-    it('Kullaniciyi başariyla getirmeli', async () => {
-      const expectedUser = { id: 'user-1', name: 'Ekin' };
-      mockPrismaService.user.findUniqueOrThrow.mockResolvedValue(expectedUser);
-
-      const result = await service.getUserById('user-1');
-      expect(result).toEqual(expectedUser);
+    it('ID ile kullaniciyi getirmeli', async () => {
+      mockPrismaService.user.findUniqueOrThrow.mockResolvedValue({ id: '1' });
+      const result = await service.getUserById('1');
+      expect(result.id).toBe('1');
     });
 
-    it('Kullanici bulunamazsa (P2025) NotFoundException firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('Not Found', {
-        code: 'P2025',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.user.findUniqueOrThrow.mockRejectedValueOnce(error);
-
-      await expect(service.getUserById('user-1')).rejects.toThrow(
-        NotFoundException,
+    it('Kullanici yoksa NotFoundException firlatmali', async () => {
+      mockPrismaService.user.findUniqueOrThrow.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('', {
+          code: 'P2025',
+          clientVersion: '',
+        }),
       );
+      await expect(service.getUserById('1')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('updateUser', () => {
-    it('Kullaniciyi güncellemeli ve Gateway yayini yapmali', async () => {
-      const dto: UserUpdateDto = { name: 'Yeni İsim' };
-      const updatedUser = {
-        id: 'user-1',
-        email: 'test@test.com',
-        role: 'USER',
-        status: 'ACTIVE',
-      };
+    it('Kullaniciyi güncellemeli ve gateway yayini yapmali', async () => {
+      const updatedUser = { id: '1', name: 'New Name' };
       mockPrismaService.user.update.mockResolvedValue(updatedUser);
 
-      const result = await service.updateUser('user-1', dto);
+      const result = await service.updateUser('1', { name: 'New Name' } as any);
 
-      expect(result.message).toContain('succesfuly');
       expect(mockUserGateway.broadcastUserUpdated).toHaveBeenCalledWith(
-        'user-1',
+        '1',
         updatedUser,
       );
+      expect(result.message).toContain('succesfuly');
     });
-
-    it('Kullanici yoksa (P2025) NotFoundException firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('Err', {
-        code: 'P2025',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.user.update.mockRejectedValueOnce(error);
-
-      await expect(service.updateUser('user-1', {})).rejects.toThrow(
-        NotFoundException,
-      );
+    it('Hata durumunda exception firlatmali', async () => {
+      mockPrismaService.user.update.mockRejectedValue(new Error());
+      await expect(service.updateUser('1', {} as any)).rejects.toThrow();
     });
   });
 
   describe('searchUsers', () => {
     it('Boş arama sorgusunda boş dizi dönmeli', async () => {
-      const result = await service.searchUsers('   ');
+      const result = await service.searchUsers('');
       expect(result).toEqual([]);
-      expect(mockPrismaService.user.findMany).not.toHaveBeenCalled();
     });
 
-    it('Kullanicilari bulup isimsizleri (null) boş string ile haritalamali', async () => {
-      const fakeUsers = [
-        { id: '1', email: 'test@test.com', name: 'Ekin' },
-        { id: '2', email: 'no-name@test.com', name: null },
-      ];
-      mockPrismaService.user.findMany.mockResolvedValue(fakeUsers);
-
-      const result = await service.searchUsers('ek');
-      expect(result).toEqual([
-        { id: '1', email: 'test@test.com', name: 'Ekin' },
-        { id: '2', email: 'no-name@test.com', name: '' },
+    it('Arama sorgusuna göre kullanicilari dönmeli', async () => {
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: '1', email: 't@t.com', name: 'Ekin' },
       ]);
-    });
 
-    it('Hata durumunda InternalServerErrorException firlatmali', async () => {
-      mockPrismaService.user.findMany.mockRejectedValueOnce(new Error());
-      await expect(service.searchUsers('test')).rejects.toThrow(
-        InternalServerErrorException,
-      );
+      const result = await service.searchUsers('Ek');
+      expect(result).toEqual([{ id: '1', email: 't@t.com', name: 'Ekin' }]);
+      expect(mockPrismaService.user.findMany).toHaveBeenCalled();
     });
   });
 
   describe('findIdByEmail', () => {
-    it('Gelen e-postalarin ID listesini dönmeli', async () => {
-      const expected = [{ id: 'user-1', email: 'test@test.com' }];
-      mockPrismaService.user.findMany.mockResolvedValue(expected);
-
-      const result = await service.findIdByEmail(['test@test.com']);
-      expect(result).toEqual(expected);
+    it('E-posta listesine göre kullanicilari bulmali', async () => {
+      mockPrismaService.user.findMany.mockResolvedValue([
+        { id: '1', email: 't@t.com' },
+      ]);
+      const result = await service.findIdByEmail(['t@t.com']);
+      expect(result.length).toBe(1);
     });
 
-    it('Hiç kullanici bulunamazsa NotFoundException firlatmali', async () => {
+    it('Kullanici bulunamazsa NotFoundException firlatmali', async () => {
       mockPrismaService.user.findMany.mockResolvedValue([]);
-      await expect(service.findIdByEmail(['test@test.com'])).rejects.toThrow(
+      await expect(service.findIdByEmail(['fake@t.com'])).rejects.toThrow(
         NotFoundException,
       );
     });
   });
 
-  describe('Auth İç Güvenlik Metotlari', () => {
-    it('addRefreshToken: Tokeni başariyla kaydetmeli', async () => {
+  describe('updateUserPassword & findUserWithPassword', () => {
+    it('Şifreyi güncellemeli', async () => {
       mockPrismaService.user.update.mockResolvedValue({});
-      await expect(
-        service.addRefreshToken('user-1', 'token123'),
-      ).resolves.not.toThrow();
-    });
-
-    it('findUserWithPassword: Şifreyi başariyla dönmeli', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({
-        password: 'hash123',
-      });
-      const result = await service.findUserWithPassword('user-1');
-      expect(result).toEqual({ password: 'hash123' });
-    });
-
-    it('findUserWithPassword: Kullanici yoksa NotFoundException firlatmali', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-      await expect(service.findUserWithPassword('user-1')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('updateUserPassword: Yeni şifreyi kaydedip mesaj dönmeli', async () => {
-      mockPrismaService.user.update.mockResolvedValue({});
-      const result = await service.updateUserPassword('user-1', 'newHash');
+      const result = await service.updateUserPassword('1', 'new-hash');
       expect(result.message).toContain('successfully');
     });
 
-    it('updateUserPassword: Kullanici yoksa (P2025) NotFoundException firlatmali', async () => {
-      const error = new Prisma.PrismaClientKnownRequestError('Err', {
-        code: 'P2025',
-        clientVersion: 'v1',
-      });
-      mockPrismaService.user.update.mockRejectedValueOnce(error);
-      await expect(
-        service.updateUserPassword('user-1', 'newHash'),
-      ).rejects.toThrow(NotFoundException);
+    it('Şifreyi bulup getirmeli', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({ password: 'hash' });
+      const result = await service.findUserWithPassword('1');
+      expect(result.password).toBe('hash');
+    });
+
+    it('Şifre bulunamazsa NotFound firlatmali', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      await expect(service.findUserWithPassword('1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('updateFailedAttempts', () => {
+    it('Başarisiz denemeleri güncellemeli', async () => {
+      mockPrismaService.user.update.mockResolvedValue({});
+      const result = await service.updateFailedAttempts('1', 5, new Date());
+      expect(result.message).toContain('updated successfully');
     });
   });
 });

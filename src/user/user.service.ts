@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserStatus } from '@prisma/client';
 import {
   userLoginDto,
   userRegisterDto,
@@ -67,6 +67,8 @@ export class UserService {
           role: true,
           status: true,
           password: true,
+          failedAttempts: true,
+          lockoutUntil: true,
         },
       });
 
@@ -88,7 +90,7 @@ export class UserService {
       await this.prisma.user.update({
         where: { id: userId },
         data: {
-          userStatus: 'DELETED',
+          status: UserStatus.DELETED,
           email: `deleted_${userId}_${uniqueSuffix}@domain.com`,
           name: 'Deleted User',
           password: 'DELETED_ACCOUNT',
@@ -97,7 +99,7 @@ export class UserService {
             deleteMany: {},
           },
 
-          assignedTasks: {
+          tasks: {
             set: [],
           },
 
@@ -297,6 +299,29 @@ export class UserService {
 
       console.error('user service updating error: ' + e);
       throw new InternalServerErrorException('A technical error occurred.');
+    }
+  }
+
+  async updateFailedAttempts(
+    userId: string,
+    attempts: number,
+    lockoutDate: Date | null,
+  ): Promise<{ message: string }> {
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          failedAttempts: attempts,
+          lockoutUntil: lockoutDate,
+        },
+      });
+
+      return { message: 'Failed attempts updated successfully' };
+    } catch (e) {
+      console.error('Error updating failed attempts:', e);
+      throw new InternalServerErrorException(
+        'A technical error occurred while updating the lockout status.',
+      );
     }
   }
 }

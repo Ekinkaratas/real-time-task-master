@@ -1,6 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole, UserStatus } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class UserResponse {
   @ApiProperty({ example: '1' })
@@ -30,4 +37,12 @@ export class UserResponse {
   @IsString()
   @IsOptional()
   password?: string;
+
+  @IsNumber()
+  @IsOptional()
+  failedAttempts?: number;
+
+  @IsDate()
+  @IsOptional()
+  lockoutUntil?: Date | null;
 }

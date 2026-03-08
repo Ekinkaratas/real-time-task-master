@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -112,25 +113,54 @@ export class AuthService {
   async login(dto: authLogin): Promise<authClientResponseDto> {
     const result = await this.userService.verifyLogin(dto);
 
-    const { password, ...user } = result;
+    if (result.lockoutUntil && result.lockoutUntil > new Date()) {
+      const remainingMinutes = Math.ceil(
+        (result.lockoutUntil.getTime() - new Date().getTime()) / 60000,
+      );
+      throw new ForbiddenException(
+        `You have made too many incorrect attempts. Please try again in ${remainingMinutes} minutes.`,
+      );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, failedAttempts, lockoutUntil, ...safeUser } = result;
 
     const passwordFlag = await argon.verify(password!, dto.password);
 
+    const currentAttempts = failedAttempts ?? 0;
+
     if (!passwordFlag) {
-      throw new UnauthorizedException('Invalid credentials');
+      const attempts = currentAttempts + 1;
+      let lockoutDate: Date | null = null;
+
+      if (attempts >= 5) {
+        lockoutDate = new Date(Date.now() + 15 * 60 * 1000);
+      }
+
+      await this.userService.updateFailedAttempts(
+        safeUser.id,
+        attempts,
+        lockoutDate,
+      );
+
+      throw new UnauthorizedException('Invalid email or password');
     }
 
-    const tokens = await this.createTokens(user);
+    if (currentAttempts > 0) {
+      await this.userService.updateFailedAttempts(safeUser.id, 0, null);
+    }
+
+    const tokens = await this.createTokens(safeUser);
 
     try {
       await this.redis.updateTokens(
-        user.id,
+        safeUser.id,
         tokens.access_token,
         tokens.refresh_token,
       );
 
       return {
-        userData: user,
+        userData: safeUser,
         refresh_Token: tokens.refresh_token,
         access_Token: tokens.access_token,
       };
