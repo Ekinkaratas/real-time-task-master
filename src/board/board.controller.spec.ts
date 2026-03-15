@@ -28,6 +28,7 @@ describe('BoardController', () => {
     searchBoardsByTitle: jest.fn(),
     updateBoard: jest.fn(),
     deleteBoard: jest.fn(),
+    changeRole: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -207,6 +208,26 @@ describe('BoardController', () => {
     });
   });
 
+  describe('changeRole', () => {
+    it('boardId, email ve newRole parametrelerini servise iletip başarı mesajı dönmeli', async () => {
+      const boardId = 'board-1';
+      const email = 'test@example.com';
+      const newRole = BoardMemberRole.ADMIN;
+      const expectedResult = { message: 'The role update was successful' };
+
+      mockBoardService.changeRole.mockResolvedValue(expectedResult);
+
+      const result = await controller.changeRole(boardId, email, newRole);
+
+      // Sonuçların kontrolü
+      expect(result).toEqual(expectedResult);
+      expect(mockBoardService.changeRole).toHaveBeenCalledWith(
+        boardId,
+        email,
+        newRole,
+      );
+    });
+  });
   describe('deleteBoard', () => {
     it('boardId parametresini servise iletmeli', async () => {
       const boardId = 'board-1';

@@ -35,6 +35,7 @@ describe('AuthService', () => {
       getUserById: jest.fn(),
       findUserWithPassword: jest.fn(),
       updateUserPassword: jest.fn(),
+      resetPasswordWithToken: jest.fn(),
     };
 
     mockRedisService = {
@@ -76,7 +77,7 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('Kullanıcıyı kaydetmeli ve tokenları dönmeli', async () => {
+    it('Kullanİcİyİ kaydetmeli ve tokenlarİ dönmeli', async () => {
       const registerDto = {
         email: 'test@test.com',
         password: '123',
@@ -106,7 +107,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('Redis patlarsa InternalServerError fırlatmalı', async () => {
+    it('Redis patlarsa InternalServerError fİrlatmalİ', async () => {
       (argon.hash as jest.Mock).mockResolvedValue('hash');
       mockUserService.register.mockResolvedValue({ id: '1' });
       mockRedisService.setTokens.mockRejectedValue(new Error('Redis Down'));
@@ -118,7 +119,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('Hesap kilitliyse ForbiddenException fırlatmalı', async () => {
+    it('Hesap kilitliyse ForbiddenException fİrlatmalİ', async () => {
       const futureDate = new Date(Date.now() + 10 * 60000);
       mockUserService.verifyLogin.mockResolvedValue({
         lockoutUntil: futureDate,
@@ -129,7 +130,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('Şifre yanlışsa failedAttempts artmalı ve Unauthorized fırlatmalı', async () => {
+    it('Şifre yanlİşsa failedAttempts artmalİ ve Unauthorized fİrlatmalİ', async () => {
       const mockUser = { id: '1', password: 'hash', failedAttempts: 2 };
       mockUserService.verifyLogin.mockResolvedValue(mockUser);
       (argon.verify as jest.Mock).mockResolvedValue(false);
@@ -146,7 +147,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('5. yanlış şifrede hesap 15 dakika kilitlenmeli', async () => {
+    it('5. yanlİş şifrede hesap 15 dakika kilitlenmeli', async () => {
       const mockUser = { id: '1', password: 'hash', failedAttempts: 4 };
       mockUserService.verifyLogin.mockResolvedValue(mockUser);
       (argon.verify as jest.Mock).mockResolvedValue(false);
@@ -162,7 +163,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('Doğru giriş yapıldığında kilitler sıfırlanmalı ve token dönmeli', async () => {
+    it('Doğru giriş yapİldİğİnda kilitler sİfİrlanmalİ ve token dönmeli', async () => {
       const mockUser = {
         id: '1',
         password: 'hash',
@@ -187,7 +188,7 @@ describe('AuthService', () => {
   });
 
   describe('updateTokens', () => {
-    it('Tokenları güncellemeli ve dönmeli', async () => {
+    it('Tokenlarİ güncellemeli ve dönmeli', async () => {
       const mockReq = { id: '1', role: 'USER' };
       (argon.hash as jest.Mock).mockResolvedValue('hash-refresh');
       mockRedisService.setTokens.mockResolvedValue(true);
@@ -216,7 +217,7 @@ describe('AuthService', () => {
       expect(result.access_token).toBe('mock-token');
     });
 
-    it('Refresh token eşleşmezse UnauthorizedException fırlatmalı', async () => {
+    it('Refresh token eşleşmezse UnauthorizedException fİrlatmalİ', async () => {
       mockRedisService.getTokens.mockResolvedValue({ refresh: 'real-refresh' });
 
       await expect(
@@ -226,14 +227,14 @@ describe('AuthService', () => {
   });
 
   describe('updatePassword', () => {
-    it('Eski ve yeni şifre aynıysa BadRequest fırlatmalı', async () => {
+    it('Eski ve yeni şifre aynİysa BadRequest fİrlatmalİ', async () => {
       const dto = { oldPassword: 'same', newPassword: 'same' };
       await expect(service.updatePassword('1', dto)).rejects.toThrow(
         BadRequestException,
       );
     });
 
-    it('Eski şifre yanlışsa BadRequest fırlatmalı', async () => {
+    it('Eski şifre yanlİşsa BadRequest fİrlatmalİ', async () => {
       const dto = { oldPassword: 'wrong', newPassword: 'new' };
       mockUserService.findUserWithPassword.mockResolvedValue({
         password: 'hash',
@@ -263,6 +264,31 @@ describe('AuthService', () => {
         'new-hash',
       );
       expect(result.message).toBe('Success');
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('Geçerli token ile şifreyi başarİyla sİfİrlamalİ', async () => {
+      (argon.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+      mockUserService.resetPasswordWithToken.mockResolvedValue(true);
+
+      const result = await service.resetPassword('valid-token', 'new-password');
+
+      expect(argon.hash).toHaveBeenCalledWith('new-password');
+      expect(mockUserService.resetPasswordWithToken).toHaveBeenCalledWith(
+        'valid-token',
+        'hashed-new-password',
+      );
+      expect(result.message).toContain('successfully reset');
+    });
+
+    it('Geçersiz token gönderilirse BadRequestException fİrlatmalİ', async () => {
+      (argon.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+      mockUserService.resetPasswordWithToken.mockResolvedValue(false);
+
+      await expect(
+        service.resetPassword('invalid-token', 'new-password'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -103,7 +103,7 @@ export class AuthService {
         access_Token: tokens.access_token,
       };
     } catch (e) {
-      console.log('auth.service register error message: ', e);
+      console.error('auth.service register error message: ', e);
       throw new InternalServerErrorException(
         'Redis error — transaction aborted',
       );
@@ -165,7 +165,7 @@ export class AuthService {
         access_Token: tokens.access_token,
       };
     } catch (e) {
-      console.log('auth.service register error message: ', e);
+      console.error('auth.service register error message: ', e);
       throw new InternalServerErrorException(
         'Redis error — transaction aborted',
       );
@@ -193,7 +193,7 @@ export class AuthService {
         access_Token: tokens.access_token,
       };
     } catch (e) {
-      console.log('auth.service updateTokens error message: ', e);
+      console.error('auth.service updateTokens error message: ', e);
       throw new InternalServerErrorException(
         'Redis error — transaction aborted',
       );
@@ -253,5 +253,49 @@ export class AuthService {
       console.error('An error while updating password : ' + e);
       throw new InternalServerErrorException('A technical error occurred.');
     }
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
+    try {
+      const newPasswordHash = await argon.hash(newPassword);
+
+      const isSuccess = await this.userService.resetPasswordWithToken(
+        token,
+        newPasswordHash,
+      );
+
+      if (!isSuccess) {
+        throw new BadRequestException(
+          'Invalid or expired password reset link.',
+        );
+      }
+
+      return {
+        message:
+          'Your password has been successfully reset. You can now log in with your new password.',
+      };
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+
+      console.error('AuthService Reset Error:', eval);
+      throw new InternalServerErrorException(
+        'A technical error occurred while resetting the password.',
+      );
+    }
+  }
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const token = await this.userService.createPasswordResetToken(email);
+
+    // Since the email hasn't been sent yet, we're logging it to the console so you can test it
+    console.log('====================================');
+    console.log('🚨 A password reset link has been generated:');
+    console.log(`http://localhost:3000/reset-password?token=${token}`);
+    console.log('====================================');
+
+    return { message: 'A password reset link has been sent to your email.' };
   }
 }

@@ -81,7 +81,7 @@ export class TasksController {
 
   @BoardRoles('ADMIN', 'OWNER', 'MEMBER')
   @ApiOperation({ summary: 'gets a task by ID' })
-  @Get(':taskId/progress')
+  @Get('/:taskId/progress')
   calculateTaskProgress(@Param('taskId') id: string) {
     return this.tasksService.calculateTaskProgress(id);
   }

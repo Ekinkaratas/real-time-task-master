@@ -7,6 +7,7 @@ import {
   UserSearchResponseDto,
   UserUpdateDto,
 } from 'contracts/User';
+import { EnrollmentStatus } from '@prisma/client';
 
 describe('UserController', () => {
   let controller: UserController;
@@ -18,6 +19,7 @@ describe('UserController', () => {
     updateUser: jest.fn(),
     searchUsers: jest.fn(),
     deleteAccount: jest.fn(),
+    getInvitions: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -106,6 +108,26 @@ describe('UserController', () => {
 
       expect(result).toEqual(expectedResponse);
       expect(mockUserService.deleteAccount).toHaveBeenCalledWith(userId);
+    });
+  });
+
+  describe('getInvitions', () => {
+    it('Kullanici ID sini servise iletmeli ve bekleyen davetleri dönmeli', async () => {
+      const userId = 'user-1';
+      const expectedResponse = [
+        {
+          boardId: 'board-1',
+          board: { title: 'Nova Bazaar' },
+          status: EnrollmentStatus.PENDING,
+        },
+      ];
+
+      mockUserService.getInvitions.mockResolvedValue(expectedResponse);
+
+      const result = await controller.getInvitions(userId);
+
+      expect(result).toEqual(expectedResponse);
+      expect(mockUserService.getInvitions).toHaveBeenCalledWith(userId);
     });
   });
 });

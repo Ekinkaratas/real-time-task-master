@@ -18,6 +18,7 @@ describe('SubtaskController', () => {
     getSubtaskById: jest.fn(),
     updateSubTask: jest.fn(),
     deleteManySubtask: jest.fn(),
+    getSubtaskByTaskId: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -69,7 +70,7 @@ describe('SubtaskController', () => {
   });
 
   describe('getSubtaskById', () => {
-    it('subtaskId yi servise iletmeli ve alt görevi dönmeli', async () => {
+    it('taskId ve subtaskId parametrelerini alıp, servise sadece subtaskId iletmeli', async () => {
       const taskId = 'task-1';
       const subtaskId = 'sub-1';
 
@@ -84,6 +85,26 @@ describe('SubtaskController', () => {
 
       expect(result).toEqual(expectedResult);
       expect(mockSubtaskService.getSubtaskById).toHaveBeenCalledWith(subtaskId);
+    });
+  });
+
+  describe('getSubtaskByTaskId', () => {
+    it('taskId yi servise iletmeli ve alt görev listesini dönmeli', async () => {
+      const taskId = 'task-1';
+
+      const expectedResult = [
+        { id: 'sub-1', title: 'Alt Görev 1', taskId },
+        { id: 'sub-2', title: 'Alt Görev 2', taskId },
+      ] as unknown as SubTasksResponseDto[];
+
+      mockSubtaskService.getSubtaskByTaskId.mockResolvedValue(expectedResult);
+
+      const result = await controller.getSubtaskByTaskId(taskId);
+
+      expect(result).toEqual(expectedResult);
+      expect(mockSubtaskService.getSubtaskByTaskId).toHaveBeenCalledWith(
+        taskId,
+      );
     });
   });
 

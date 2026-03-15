@@ -82,6 +82,32 @@ export class SubtaskService {
     }
   }
 
+  async getSubtaskByTaskId(TaskId: string): Promise<SubTasksResponseDto[]> {
+    try {
+      const subtask = await this.prisma.subtask.findMany({
+        where: { taskId: TaskId },
+      });
+
+      if (subtask.length === 0)
+        throw new NotFoundException('Not Found SubTask by taskId');
+
+      return subtask;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2000') {
+          throw new BadRequestException('Title Too Long');
+        }
+      }
+
+      if (e instanceof HttpException) throw e;
+
+      console.error(
+        'An error occurred while finding the subtask with the taskId : ' + e,
+      );
+      throw new InternalServerErrorException('An error occurred');
+    }
+  }
+
   async updateSubTask(
     SubTaskId: string,
     updateSubTaskDto: UpdateSubTaskDto,

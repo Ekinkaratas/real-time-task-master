@@ -18,6 +18,7 @@ import {
   UserSearchResponseDto,
   UserUpdateDto,
 } from 'contracts/User';
+import { EnrollmentStatus } from '@prisma/client';
 
 @ApiTags('user')
 @UseFilters(AllExceptionsFilter)
@@ -36,6 +37,18 @@ export class UserController {
   @Get('search')
   searchUsers(@Query('query') query: string): Promise<UserSearchResponseDto[]> {
     return this.service.searchUsers(query);
+  }
+
+  @ApiOperation({ summary: 'get invitions by userId' })
+  @Get('invitions')
+  getInvitions(@CurrentUser('id') userId: string): Promise<
+    {
+      boardId: string;
+      board: { title: string };
+      status: EnrollmentStatus;
+    }[]
+  > {
+    return this.service.getInvitions(userId);
   }
 
   @ApiOperation({ summary: 'update user by Id' })

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Param,
   Patch,
   Post,
   Req,
@@ -28,7 +29,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @ApiOperation({ summary: 'creates a new user' })
-  @Post('/r')
+  @Post('/R')
   register(@Body() dto: authRegisterDto): Promise<authClientResponseDto> {
     return this.authService.register(dto);
   }
@@ -59,6 +60,19 @@ export class AuthController {
       userId,
       req['refreshToken'] as string,
     );
+  }
+
+  @Post('/forgot-password')
+  forgotPassword(@Body('email') email: string): Promise<{ message: string }> {
+    return this.authService.forgotPassword(email);
+  }
+
+  @Post('/reset-password/:token')
+  resetPassword(
+    @Param('token') token: string,
+    @Body('newPassword') newPassword: string,
+  ): Promise<{ message: string }> {
+    return this.authService.resetPassword(token, newPassword);
   }
 
   @UseGuards(AccessTokenGuard)

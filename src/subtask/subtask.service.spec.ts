@@ -23,6 +23,7 @@ describe('SubtaskService', () => {
     subtask: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
     },
@@ -141,6 +142,57 @@ describe('SubtaskService', () => {
 
       await expect(service.getSubtaskById('wrong-sub')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('getSubtaskByTaskId', () => {
+    it('Göreve ait alt görevleri başarıyla dönmeli', async () => {
+      const taskId = 'task-1';
+      const expectedSubtasks = [
+        { id: 'sub-1', title: 'Alt Görev 1', taskId },
+        { id: 'sub-2', title: 'Alt Görev 2', taskId },
+      ] as unknown as SubTasksResponseDto[];
+
+      mockPrismaService.subtask.findMany.mockResolvedValue(expectedSubtasks);
+
+      const result = await service.getSubtaskByTaskId(taskId);
+
+      expect(result).toEqual(expectedSubtasks);
+      expect(mockPrismaService.subtask.findMany).toHaveBeenCalledWith({
+        where: { taskId },
+      });
+    });
+
+    it('Göreve ait alt görev yoksa NotFoundException fırlatmalı', async () => {
+      const taskId = 'wrong-task';
+
+      mockPrismaService.subtask.findMany.mockResolvedValue([]);
+
+      await expect(service.getSubtaskByTaskId(taskId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('Prisma P2000 (Title Too Long) hatası atarsa BadRequestException fırlatmalı', async () => {
+      const error = new Prisma.PrismaClientKnownRequestError('Err', {
+        code: 'P2000',
+        clientVersion: 'v1',
+      });
+      mockPrismaService.subtask.findMany.mockRejectedValueOnce(error);
+
+      await expect(service.getSubtaskByTaskId('task-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('Bilinmeyen bir hata oluşursa InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.subtask.findMany.mockRejectedValueOnce(
+        new Error('Unexpected DB Error'),
+      );
+
+      await expect(service.getSubtaskByTaskId('task-1')).rejects.toThrow(
+        InternalServerErrorException,
       );
     });
   });

@@ -22,6 +22,7 @@ describe('AuthController', () => {
     updateTokens: jest.fn(),
     updateAccessToken: jest.fn(),
     updatePassword: jest.fn(),
+    resetPassword: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -135,6 +136,26 @@ describe('AuthController', () => {
 
       expect(result).toEqual(expectedResponse);
       expect(mockAuthService.updatePassword).toHaveBeenCalledWith(userId, dto);
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('Kullanici ID sini ve yeni şifreyi servise iletip mesaj dönmeli', async () => {
+      const userId = 'user-1';
+      const newPassword = 'newSecretPassword';
+      const expectedResponse = {
+        message: 'Password has been successfully reset',
+      };
+
+      mockAuthService.resetPassword.mockResolvedValue(expectedResponse);
+
+      const result = await controller.resetPassword(userId, newPassword);
+
+      expect(result).toEqual(expectedResponse);
+      expect(mockAuthService.resetPassword).toHaveBeenCalledWith(
+        userId,
+        newPassword,
+      );
     });
   });
 });

@@ -36,9 +36,18 @@ export class SubtaskController {
     return this.service.createSubtask(taskId, createSubTaskDto);
   }
 
+  @ApiOperation({ summary: 'get all subtask by taskId' })
+  @BoardRoles('ADMIN', 'OWNER', 'MEMBER')
+  @Get('/list/:taskId')
+  getSubtaskByTaskId(
+    @Param('taskId') taskId: string,
+  ): Promise<SubTasksResponseDto[]> {
+    return this.service.getSubtaskByTaskId(taskId);
+  }
+
   @ApiOperation({ summary: 'get a subtask by id' })
   @BoardRoles('ADMIN', 'OWNER', 'MEMBER')
-  @Get('/:taskId/:subtaskId')
+  @Get('/detail/:taskId/:subtaskId')
   getSubtaskById(
     @Param('taskId') taskId: string,
     @Param('subtaskId') subtaskId: string,

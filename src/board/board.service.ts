@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -27,7 +29,6 @@ export class BoardService {
 
   async createBoard(createBoardDto: CreateBoardDto, userId: string) {
     return await this.prisma.$transaction(async (tx) => {
-      console.log('Creating board right now:');
       const board = await tx.board.create({
         data: {
           title: createBoardDto.title,
@@ -37,7 +38,6 @@ export class BoardService {
         },
       });
 
-      console.log('Creating boardMember right now:');
       await tx.boardMember.create({
         data: {
           boardId: board.id,
@@ -86,9 +86,9 @@ export class BoardService {
       });
 
       return { message: 'User invited to board successfully' };
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') {
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2002') {
           throw new ConflictException(
             'This user has already been invited or is a member of the board.',
           );
@@ -227,7 +227,45 @@ export class BoardService {
         }
       }
       throw new InternalServerErrorException(
-        'An error occurred while deleting the member.',
+        'An error occurred while rejected the member.',
+      );
+    }
+  }
+
+  async changeRole(boardId: string, email: string, newRole: BoardMemberRole) {
+    try {
+      const user = await this.userService.findIdByEmail([email]);
+
+      if (user.length === 0) throw new NotFoundException('User Not Found');
+
+      const userId = user[0].id;
+      await this.prisma.boardMember.update({
+        where: {
+          boardId_userId: {
+            boardId: boardId,
+            userId: userId,
+          },
+        },
+        data: { role: newRole },
+      });
+
+      this.gateway.broadcastBoardUpdate(boardId, user);
+
+      return { message: 'The role update was successful' };
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2025') {
+          throw new NotFoundException(
+            'This user is not a member of the forum.',
+          );
+        }
+      }
+
+      console.error('An error occurred during the deletion process : ' + e);
+      throw new InternalServerErrorException(
+        'An error occurred while deleting the member',
       );
     }
   }
@@ -321,21 +359,34 @@ export class BoardService {
 
   async deleteBoard(boardId: string) {
     try {
-      await this.prisma.board.delete({
+      const boardToDelete = await this.prisma.board.findUnique({
         where: {
           id: boardId,
         },
+        include: { columns: true },
       });
+
+      if (!boardToDelete)
+        throw new NotFoundException('Board to delete does not exist');
+
+      if (boardToDelete.columns.length > 0) {
+        throw new BadRequestException(
+          'There are still columns on this board! To clear the board, you must first remove everything from it..',
+        );
+      }
+      await this.prisma.board.delete({ where: { id: boardId } });
 
       this.gateway.broadcastBoardDelete(boardId);
 
       return { message: 'Board deleted successfully' };
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2025') {
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2025') {
           throw new NotFoundException('Board not found');
         }
       }
+
+      if (e instanceof HttpException) throw e;
       throw new InternalServerErrorException(
         'An error occurred while deleting the board.',
       );

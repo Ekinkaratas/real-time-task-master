@@ -31,8 +31,16 @@ async function bootstrap() {
     }),
   );
 
+  app.enableCors({
+    origin: process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',')
+      : '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
+
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3001);
 }
 void bootstrap();

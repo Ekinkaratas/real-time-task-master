@@ -21,6 +21,7 @@ import {
   CreateBoardDto,
   UpdateToBoardDto,
 } from 'contracts/boards';
+import { BoardMemberRole } from '@prisma/client';
 
 @ApiTags('board')
 @UseFilters(new AllExceptionsFilter())
@@ -67,7 +68,7 @@ export class BoardController {
   acceptInvitation(
     @Param('boardId') boardId: string,
     @CurrentUser('id') userId: string,
-  ) {
+  ): Promise<{ message: string }> {
     return this.service.acceptInvitation(boardId, userId);
   }
 
@@ -76,8 +77,20 @@ export class BoardController {
   rejectInvitation(
     @Param('boardId') boardId: string,
     @CurrentUser('id') userId: string,
-  ) {
+  ): Promise<{ message: string }> {
     return this.service.rejectInvitation(boardId, userId);
+  }
+
+  @ApiOperation({ summary: 'Changes the roles of board members.' })
+  @UseGuards(BoardRoleGuard)
+  @BoardRoles('ADMIN', 'OWNER')
+  @Patch(':boardId/change-role')
+  changeRole(
+    @Param('boardId') boardId: string,
+    @Body('email') email: string,
+    @Body('newRole') newRole: BoardMemberRole,
+  ): Promise<{ message: string }> {
+    return this.service.changeRole(boardId, email, newRole);
   }
 
   @ApiOperation({ summary: 'Get all boards for user' })

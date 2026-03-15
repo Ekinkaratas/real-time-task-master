@@ -4,12 +4,27 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserGateway } from '../events/user.gateway';
-import { Prisma, UserStatus } from '@prisma/client';
+import { Prisma, UserStatus, EnrollmentStatus } from '@prisma/client';
 import {
+  BadRequestException,
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import * as crypto from 'crypto';
+
+jest.mock('crypto', () => {
+  const actualCrypto = jest.requireActual('crypto');
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return {
+    ...actualCrypto,
+    randomBytes: jest.fn().mockReturnValue({
+      toString: () => 'mocked-hex-string',
+    }),
+  };
+});
 
 describe('UserService', () => {
   let service: UserService;
@@ -22,10 +37,14 @@ describe('UserService', () => {
     user: {
       create: jest.fn(),
       findFirstOrThrow: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+    },
+    boardMember: {
+      findMany: jest.fn(),
     },
   };
 
@@ -176,6 +195,7 @@ describe('UserService', () => {
       );
       expect(result.message).toContain('succesfuly');
     });
+
     it('Hata durumunda exception firlatmali', async () => {
       mockPrismaService.user.update.mockRejectedValue(new Error());
       await expect(service.updateUser('1', {} as any)).rejects.toThrow();
@@ -242,6 +262,147 @@ describe('UserService', () => {
       mockPrismaService.user.update.mockResolvedValue({});
       const result = await service.updateFailedAttempts('1', 5, new Date());
       expect(result.message).toContain('updated successfully');
+    });
+  });
+
+  describe('getInvitions', () => {
+    it('Bekleyen davetleri başarıyla dönmeli', async () => {
+      const expectedInvitions = [
+        {
+          boardId: 'board-1',
+          board: { title: 'Nova' },
+          status: EnrollmentStatus.PENDING,
+        },
+      ];
+
+      mockPrismaService.boardMember.findMany.mockResolvedValue(
+        expectedInvitions,
+      );
+
+      const result = await service.getInvitions('user-1');
+
+      expect(result).toEqual(expectedInvitions);
+      expect(mockPrismaService.boardMember.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', status: EnrollmentStatus.PENDING },
+        select: {
+          boardId: true,
+          status: true,
+          board: { select: { title: true } },
+        },
+      });
+    });
+
+    it('Veritabanı bilinmeyen hatasında (P2000) BadRequestException fırlatmalı', async () => {
+      mockPrismaService.boardMember.findMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('', {
+          code: 'P2000',
+          clientVersion: '',
+        }),
+      );
+
+      await expect(service.getInvitions('user-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('Beklenmeyen hatalarda InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.boardMember.findMany.mockRejectedValue(
+        new Error('Unexpected Error'),
+      );
+
+      await expect(service.getInvitions('user-1')).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+  });
+
+  describe('createPasswordResetToken', () => {
+    it('Kullanıcıyı bulup token üretmeli ve veritabanına kaydetmeli', async () => {
+      const user = { id: 'user-1', email: 'test@test.com' };
+      const expectedTokenHex = 'mocked-hex-string';
+
+      mockPrismaService.user.findFirst.mockResolvedValue(user);
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      const result = await service.createPasswordResetToken('test@test.com');
+
+      expect(result).toBe(expectedTokenHex);
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: { email: 'test@test.com' },
+      });
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: expect.objectContaining({
+            resetPasswordToken: expectedTokenHex,
+            resetPasswordExpires: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('Kullanıcı bulunamazsa NotFoundException fırlatmalı', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createPasswordResetToken('fake@test.com'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('Beklenmeyen bir hata olursa InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.user.findFirst.mockRejectedValue(new Error('DB Error'));
+
+      await expect(
+        service.createPasswordResetToken('test@test.com'),
+      ).rejects.toThrow(InternalServerErrorException);
+    });
+  });
+
+  describe('resetPasswordWithToken', () => {
+    it('Geçerli token ile şifreyi başarıyla sıfırlamalı', async () => {
+      const user = { id: 'user-1', resetPasswordToken: 'valid-token' };
+
+      mockPrismaService.user.findFirst.mockResolvedValue(user);
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      const result = await service.resetPasswordWithToken(
+        'valid-token',
+        'new-hashed-password',
+      );
+
+      expect(result.message).toContain('successfully reset');
+      expect(mockPrismaService.user.findFirst).toHaveBeenCalledWith({
+        where: {
+          resetPasswordToken: 'valid-token',
+          resetPasswordExpires: { gt: expect.any(Date) },
+        },
+      });
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: {
+          password: 'new-hashed-password',
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+        },
+      });
+    });
+
+    it('Token geçersiz veya süresi dolmuşsa BadRequestException fırlatmalı', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.resetPasswordWithToken('invalid-token', 'new-hashed-password'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('Beklenmeyen hata durumunda InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.user.findFirst.mockRejectedValue(
+        new Error('Server crashed'),
+      );
+
+      await expect(
+        service.resetPasswordWithToken('valid-token', 'new-hashed-password'),
+      ).rejects.toThrow(InternalServerErrorException);
     });
   });
 });

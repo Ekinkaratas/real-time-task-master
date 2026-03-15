@@ -15,10 +15,10 @@ export class authRegisterDto {
   @ApiProperty({ example: 'Ekin' })
   @IsNotEmpty()
   @IsString()
-  firstname!: string;
+  firstName!: string;
 
   @ApiProperty({ example: 'Karataş' })
   @IsNotEmpty()
   @IsString()
-  lastname!: string;
+  lastName!: string;
 }

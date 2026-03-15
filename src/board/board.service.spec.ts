@@ -257,7 +257,12 @@ describe('BoardService', () => {
     });
 
     it('deleteBoard: Panoyu silip yayinlamali', async () => {
-      mockPrismaService.board.delete.mockResolvedValue({});
+      mockPrismaService.board.findUnique.mockResolvedValue({
+        id: '1',
+        columns: [],
+      });
+
+      mockPrismaService.board.delete.mockResolvedValue({ id: '1' });
 
       const result = await service.deleteBoard('1');
       expect(result.message).toContain('deleted');
@@ -279,6 +284,70 @@ describe('BoardService', () => {
             }),
           }),
         }),
+      );
+    });
+  });
+
+  describe('changeRole', () => {
+    const boardId = 'board-1';
+    const email = 'test@example.com';
+    const userId = 'user-123';
+    const newRole = BoardMemberRole.ADMIN;
+
+    it('Kullanıcı rolünü başarıyla güncellemeli ve yayın yapmalı', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
+      mockPrismaService.boardMember.update.mockResolvedValue({
+        boardId,
+        userId,
+        role: newRole,
+      });
+
+      const result = await service.changeRole(boardId, email, newRole);
+
+      expect(result.message).toContain('successful');
+      expect(mockUserService.findIdByEmail).toHaveBeenCalledWith([email]);
+      expect(mockPrismaService.boardMember.update).toHaveBeenCalledWith({
+        where: {
+          boardId_userId: { boardId, userId },
+        },
+        data: { role: newRole },
+      });
+      expect(mockBoardGateway.broadcastBoardUpdate).toHaveBeenCalledWith(
+        boardId,
+        [{ id: userId }],
+      );
+    });
+
+    it('Kullanıcı bulunamazsa NotFoundException firlatmalı', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([]);
+
+      await expect(service.changeRole(boardId, email, newRole)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('Kullanıcı panoda kayıtlı değilse (P2025) NotFoundException firlatmalı', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
+
+      const prismaError = new Prisma.PrismaClientKnownRequestError('Err', {
+        code: 'P2025',
+        clientVersion: '1',
+      });
+      mockPrismaService.boardMember.update.mockRejectedValueOnce(prismaError);
+
+      await expect(service.changeRole(boardId, email, newRole)).rejects.toThrow(
+        new NotFoundException('This user is not a member of the forum.'),
+      );
+    });
+
+    it('Beklenmedik bir hatada InternalServerErrorException firlatmalı', async () => {
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
+      mockPrismaService.boardMember.update.mockRejectedValueOnce(
+        new Error('Database Down'),
+      );
+
+      await expect(service.changeRole(boardId, email, newRole)).rejects.toThrow(
+        InternalServerErrorException,
       );
     });
   });

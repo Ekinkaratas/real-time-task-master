@@ -8,7 +8,7 @@ export function toUserRegisterDto(
   return {
     email: dto.email,
     password: passwordHash,
-    firstName: dto.firstname,
-    lastName: dto.lastname,
+    firstName: dto.firstName,
+    lastName: dto.lastName,
   };
 }

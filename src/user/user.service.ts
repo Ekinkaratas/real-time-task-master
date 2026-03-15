@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserStatus } from '@prisma/client';
+import { EnrollmentStatus, Prisma, UserStatus } from '@prisma/client';
 import {
   userLoginDto,
   userRegisterDto,
@@ -16,6 +17,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { UserGateway } from '../events/user.gateway';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UserService {
@@ -144,6 +146,48 @@ export class UserService {
       throw new InternalServerErrorException(
         'A technical error occurred during the get user by Id.',
       );
+    }
+  }
+
+  async getInvitions(userId: string): Promise<
+    {
+      boardId: string;
+      board: { title: string };
+      status: EnrollmentStatus;
+    }[]
+  > {
+    try {
+      const invitions = await this.prisma.boardMember.findMany({
+        where: {
+          userId: userId,
+          status: EnrollmentStatus.PENDING,
+        },
+
+        select: {
+          boardId: true,
+          status: true,
+          board: {
+            select: {
+              title: true,
+            },
+          },
+        },
+      });
+
+      return invitions;
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2000') {
+          throw new BadRequestException('An unknown database error');
+        }
+      }
+
+      console.error(
+        'An error occurred while finding the subtask with the taskId : ' + e,
+      );
+      throw new InternalServerErrorException('An error occurred');
     }
   }
 
@@ -322,6 +366,74 @@ export class UserService {
       throw new InternalServerErrorException(
         'A technical error occurred while updating the lockout status.',
       );
+    }
+  }
+
+  async createPasswordResetToken(email: string): Promise<string> {
+    try {
+      const user = await this.prisma.user.findFirst({
+        where: { email },
+      });
+
+      if (!user) {
+        throw new NotFoundException(
+          'No user was found for this email address.',
+        );
+      }
+
+      const resetToken = crypto.randomBytes(32).toString('hex');
+
+      const tokenExpiration = new Date(Date.now() + 15 * 60 * 1000);
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: resetToken,
+          resetPasswordExpires: tokenExpiration,
+        },
+      });
+
+      return resetToken;
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      console.error('Error while generating a password reset token:', e);
+      throw new InternalServerErrorException('A technical error has occurred.');
+    }
+  }
+
+  async resetPasswordWithToken(
+    token: string,
+    newPasswordHash: string,
+  ): Promise<{ message: string }> {
+    try {
+      const user = await this.prisma.user.findFirst({
+        where: {
+          resetPasswordToken: token,
+          resetPasswordExpires: { gt: new Date() },
+        },
+      });
+
+      if (!user) {
+        throw new BadRequestException('The token is invalid or has expired.');
+      }
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: newPasswordHash,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+        },
+      });
+
+      return {
+        message:
+          'Your password has been successfully reset. You can now log in with your new password..',
+      };
+    } catch (e) {
+      if (e instanceof HttpException) throw e;
+      console.error('Error while resetting the password:', e);
+      throw new InternalServerErrorException('A technical error has occurred.');
     }
   }
 }
