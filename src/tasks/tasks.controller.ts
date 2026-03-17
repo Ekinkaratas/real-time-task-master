@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import {
+  AssigneeResponseDto,
   CreateTaskDto,
   ReOrderTaskDto,
   TaskResponseDto,
@@ -63,6 +64,15 @@ export class TasksController {
     return this.tasksService.deleteAssignees(taskId, userEmails);
   }
 
+  @ApiOperation({ summary: 'get all assignees for task' })
+  @Get(':taskId/assignees/all')
+  getAssignees(@Param('taskId') id: string): Promise<{
+    lead: AssigneeResponseDto | null;
+    assignees: AssigneeResponseDto[];
+  }> {
+    return this.tasksService.getAssignees(id);
+  }
+
   @BoardRoles('ADMIN', 'OWNER', 'MEMBER')
   @ApiOperation({ summary: 'gets a task by ID' })
   @Get(':taskId')
@@ -108,12 +118,13 @@ export class TasksController {
 
   @BoardRoles('ADMIN', 'OWNER')
   @ApiOperation({ summary: 'update lead for task' })
-  @Patch(':taskId/lead')
+  @Patch(':boardId/:taskId/lead')
   updateLead(
+    @Param('boardId') boardId: string,
     @Param('taskId') taskId: string,
     @Body('email') email: string,
   ): Promise<TaskResponseDto> {
-    return this.tasksService.updateLead(taskId, email);
+    return this.tasksService.updateLead(boardId, taskId, email);
   }
 
   @BoardRoles('ADMIN', 'OWNER')

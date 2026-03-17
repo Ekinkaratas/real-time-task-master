@@ -29,6 +29,7 @@ describe('BoardController', () => {
     updateBoard: jest.fn(),
     deleteBoard: jest.fn(),
     changeRole: jest.fn(),
+    getMembers: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -219,7 +220,6 @@ describe('BoardController', () => {
 
       const result = await controller.changeRole(boardId, email, newRole);
 
-      // Sonuçların kontrolü
       expect(result).toEqual(expectedResult);
       expect(mockBoardService.changeRole).toHaveBeenCalledWith(
         boardId,
@@ -228,6 +228,27 @@ describe('BoardController', () => {
       );
     });
   });
+
+  describe('getMembers', () => {
+    it('boardId parametresini servise iletip pano üyelerini dönmeli', async () => {
+      const boardId = 'board-1';
+      const expectedResult = [
+        {
+          id: 'member-1',
+          role: 'ADMIN',
+          user: { email: 'test@example.com', name: 'Test User' },
+        },
+      ];
+
+      mockBoardService.getMembers.mockResolvedValue(expectedResult);
+
+      const result = await controller.getMembers(boardId);
+
+      expect(result).toEqual(expectedResult);
+      expect(mockBoardService.getMembers).toHaveBeenCalledWith(boardId);
+    });
+  });
+
   describe('deleteBoard', () => {
     it('boardId parametresini servise iletmeli', async () => {
       const boardId = 'board-1';

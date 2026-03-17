@@ -29,6 +29,7 @@ describe('TasksController', () => {
     updateTask: jest.fn(),
     updateLead: jest.fn(),
     deleteTask: jest.fn(),
+    getAssignees: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -202,17 +203,41 @@ describe('TasksController', () => {
   });
 
   describe('updateLead', () => {
-    it('taskId ve lead e-postasını servise iletmeli', async () => {
+    it('boardId, taskId ve lead e-postasını servise iletmeli', async () => {
+      const boardId = 'board-1';
       const taskId = 'task-1';
       const email = 'lead@test.com';
       const expectedResult = { id: taskId } as unknown as TaskResponseDto;
 
       mockTasksService.updateLead.mockResolvedValue(expectedResult);
 
-      const result = await controller.updateLead(taskId, email);
+      const result = await controller.updateLead(boardId, taskId, email);
 
       expect(result).toEqual(expectedResult);
-      expect(mockTasksService.updateLead).toHaveBeenCalledWith(taskId, email);
+      expect(mockTasksService.updateLead).toHaveBeenCalledWith(
+        boardId,
+        taskId,
+        email,
+      );
+    });
+  });
+
+  describe('getAssignees', () => {
+    it('taskId parametresini servise iletip atananları (assignees) ve lideri (lead) dönmeli', async () => {
+      const taskId = 'task-1';
+      const expectedResult = {
+        lead: { id: 'user-1', name: 'Lead User', email: 'lead@test.com' },
+        assignees: [
+          { id: 'user-2', name: 'Member User', email: 'member@test.com' },
+        ],
+      };
+
+      mockTasksService.getAssignees.mockResolvedValue(expectedResult);
+
+      const result = await controller.getAssignees(taskId);
+
+      expect(result).toEqual(expectedResult);
+      expect(mockTasksService.getAssignees).toHaveBeenCalledWith(taskId);
     });
   });
 

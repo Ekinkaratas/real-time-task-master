@@ -9,6 +9,7 @@ import { UserGateway } from '../events/user.gateway';
 import {
   BadRequestException,
   ConflictException,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -31,6 +32,7 @@ describe('TasksService', () => {
     },
     boardMember: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
   };
 
@@ -232,6 +234,58 @@ describe('TasksService', () => {
     });
   });
 
+  describe('getAssignees', () => {
+    const taskId = 'task-1';
+
+    it('Görev bulunduğunda lead ve assignees bilgilerini dönmeli', async () => {
+      const mockResult = {
+        leadAssignee: { id: 'l1', name: 'Lead', email: 'lead@test.com' },
+        assignees: [{ id: 'a1', name: 'Assignee', email: 'assignee@test.com' }],
+      };
+      mockPrismaService.task.findUnique.mockResolvedValue(mockResult);
+
+      const result = await service.getAssignees(taskId);
+
+      expect(result).toEqual({
+        lead: mockResult.leadAssignee,
+        assignees: mockResult.assignees,
+      });
+      expect(mockPrismaService.task.findUnique).toHaveBeenCalledWith({
+        where: { id: taskId },
+        select: expect.any(Object),
+      });
+    });
+
+    it('Görev bulunamazsa (null dönerse) null lead ve boş dizi dönmeli', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValue(null);
+
+      const result = await service.getAssignees(taskId);
+
+      expect(result).toEqual({ lead: null, assignees: [] });
+    });
+
+    it('Eksik ilişkiler (undefined) varsa fallback değerleri dönmeli', async () => {
+      mockPrismaService.task.findUnique.mockResolvedValue({
+        leadAssignee: undefined,
+        assignees: undefined,
+      });
+
+      const result = await service.getAssignees(taskId);
+
+      expect(result).toEqual({ lead: null, assignees: [] });
+    });
+
+    it('Veritabanı hatasında InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.task.findUnique.mockRejectedValueOnce(
+        new Error('DB Connection Failed'),
+      );
+
+      await expect(service.getAssignees(taskId)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+  });
+
   describe('Temel CRUD İşlemleri', () => {
     it('getTaskById: ID ye göre görev getirmeli', async () => {
       const mockTask = { id: 'task-1' };
@@ -256,14 +310,37 @@ describe('TasksService', () => {
       expect(result).toEqual(mockTask);
     });
 
-    it('updateLead: Lideri güncellemeli', async () => {
-      mockUserService.findIdByEmail.mockResolvedValue([{ id: 'user-1' }]);
-      const mockTask = { id: 'task-1', column: { boardId: 'board-1' } };
+    it('updateLead: Lideri güncellemeli ve yayını tetiklemeli', async () => {
+      const boardId = 'board-1';
+      const taskId = 'task-1';
+      const email = 'test@test.com';
+      const userId = 'user-1';
+      const mockTask = { id: taskId, column: { boardId } };
+
+      mockUserService.findIdByEmail.mockResolvedValue([{ id: userId }]);
+      mockPrismaService.boardMember.findUnique.mockResolvedValue({
+        boardId,
+        userId,
+      });
+
       mockPrismaService.task.update.mockResolvedValue(mockTask);
       jest.spyOn(service, 'getTaskById').mockResolvedValue(mockTask as any);
 
-      const result = await service.updateLead('task-1', 'test@test.com');
+      const result = await service.updateLead(boardId, taskId, email);
+
       expect(result).toEqual(mockTask);
+      expect(mockUserService.findIdByEmail).toHaveBeenCalledWith([email]);
+      expect(mockPrismaService.boardMember.findUnique).toHaveBeenCalledWith({
+        where: { boardId_userId: { boardId, userId } },
+      });
+      expect(mockPrismaService.task.update).toHaveBeenCalledWith({
+        where: { id: taskId },
+        data: { leadAssigneeId: userId },
+      });
+      expect(mockBoardGateway.broadcastTaskUpdate).toHaveBeenCalledWith(
+        boardId,
+        mockTask,
+      );
     });
 
     it('deleteTask: Görevi silmeli ve yayini tetiklemeli', async () => {

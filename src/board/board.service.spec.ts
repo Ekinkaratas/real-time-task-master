@@ -351,4 +351,48 @@ describe('BoardService', () => {
       );
     });
   });
+
+  describe('getMembers', () => {
+    const boardId = 'board-1';
+
+    it('Pano bulunduğunda üyeleri dönmeli', async () => {
+      const expectedMembers = [
+        {
+          id: 'member-1',
+          role: 'ADMIN',
+          user: { id: 'u1', email: 'test@test.com', name: 'Test User' },
+        },
+      ];
+
+      mockPrismaService.board.findUnique.mockResolvedValue({
+        members: expectedMembers,
+      });
+
+      const result = await service.getMembers(boardId);
+
+      expect(result).toEqual(expectedMembers);
+      expect(mockPrismaService.board.findUnique).toHaveBeenCalledWith({
+        where: { id: boardId },
+        select: expect.any(Object),
+      });
+    });
+
+    it('Pano bulunamazsa (null dönerse) boş dizi [] dönmeli', async () => {
+      mockPrismaService.board.findUnique.mockResolvedValue(null);
+
+      const result = await service.getMembers(boardId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('Veritabanı hatasında InternalServerErrorException fırlatmalı', async () => {
+      mockPrismaService.board.findUnique.mockRejectedValueOnce(
+        new Error('DB Connection Error'),
+      );
+
+      await expect(service.getMembers(boardId)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+  });
 });

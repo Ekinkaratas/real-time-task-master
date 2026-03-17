@@ -52,17 +52,6 @@ export class BoardController {
     return this.service.BoardsAddUser(boardId, user);
   }
 
-  @ApiOperation({ summary: 'Board user removed successfully' })
-  @UseGuards(BoardRoleGuard)
-  @BoardRoles('ADMIN', 'OWNER')
-  @Delete('/:boardId/remove-user')
-  removeUserFromBoard(
-    @Param('boardId') boardId: string,
-    @Body('email') userEmail: string,
-  ) {
-    return this.service.removeUserFromBoard(boardId, userEmail);
-  }
-
   @ApiOperation({ summary: 'Board invitation accepted successfully' })
   @Patch(':boardId/invitation/accept')
   acceptInvitation(
@@ -93,6 +82,18 @@ export class BoardController {
     return this.service.changeRole(boardId, email, newRole);
   }
 
+  @ApiOperation({ summary: 'Board updated successfully' })
+  @ApiBody({ type: UpdateToBoardDto })
+  @UseGuards(BoardRoleGuard)
+  @BoardRoles('ADMIN', 'OWNER')
+  @Patch('/:boardId')
+  updateBoard(
+    @Param('boardId') boardId: string,
+    @Body() updateBoardDto: UpdateToBoardDto,
+  ) {
+    return this.service.updateBoard(boardId, updateBoardDto);
+  }
+
   @ApiOperation({ summary: 'Get all boards for user' })
   @Get()
   getBoardForUser(@CurrentUser('id') userId: string) {
@@ -114,16 +115,22 @@ export class BoardController {
     return this.service.searchBoardsByTitle(title, userId);
   }
 
-  @ApiOperation({ summary: 'Board updated successfully' })
-  @ApiBody({ type: UpdateToBoardDto })
+  @UseGuards(AccessTokenGuard)
+  @BoardRoles('ADMIN', 'OWNER')
+  @Get('/:boardId/members')
+  getMembers(@Param('boardId') boardId: string): Promise<any[]> {
+    return this.service.getMembers(boardId);
+  }
+
+  @ApiOperation({ summary: 'Board user removed successfully' })
   @UseGuards(BoardRoleGuard)
   @BoardRoles('ADMIN', 'OWNER')
-  @Patch('/:boardId')
-  updateBoard(
+  @Delete('/:boardId/remove-user')
+  removeUserFromBoard(
     @Param('boardId') boardId: string,
-    @Body() updateBoardDto: UpdateToBoardDto,
+    @Body('email') userEmail: string,
   ) {
-    return this.service.updateBoard(boardId, updateBoardDto);
+    return this.service.removeUserFromBoard(boardId, userEmail);
   }
 
   @ApiOperation({ summary: 'Board deleted successfully' })

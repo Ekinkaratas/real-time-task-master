@@ -415,4 +415,38 @@ export class BoardService {
       },
     });
   }
+
+  async getMembers(boardId: string): Promise<any[]> {
+    try {
+      const board = await this.prisma.board.findUnique({
+        where: { id: boardId },
+        select: {
+          members: {
+            select: {
+              id: true,
+              role: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!board) {
+        return [];
+      }
+
+      return board.members;
+    } catch (error) {
+      console.error('getMembers Error:', error);
+      throw new InternalServerErrorException(
+        'An error occurred while loading members.',
+      );
+    }
+  }
 }

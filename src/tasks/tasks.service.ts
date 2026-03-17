@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, TaskStatus } from '@prisma/client';
 import {
+  AssigneeResponseDto,
   CreateTaskDto,
   ReOrderTaskDto,
   TaskResponseDto,
@@ -241,7 +242,45 @@ export class TasksService {
     }
   }
 
-  async calculateTaskProgress(id: string): Promise<{ progress: number }> {
+  async getAssignees(taskId: string): Promise<{
+    lead: AssigneeResponseDto | null;
+    assignees: AssigneeResponseDto[];
+  }> {
+    try {
+      const result = await this.prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          leadAssignee: {
+            select: { id: true, name: true, email: true },
+          },
+          assignees: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      });
+
+      if (!result) {
+        return {
+          lead: null,
+          assignees: [],
+        };
+      }
+      return {
+        lead: result.leadAssignee || null,
+        assignees: result.assignees || [],
+      };
+    } catch (e) {
+      console.error(`[TaskService] getAssignees error for ID ${taskId}:`, e);
+
+      throw new InternalServerErrorException(
+        'A server error occurred while retrieving the list of responsible parties.',
+      );
+    }
+  }
+
+  async calculateTaskProgress(
+    id: string,
+  ): Promise<{ progress: number; total: number }> {
     try {
       const task = await this.prisma.task.findUnique({
         where: { id },
@@ -266,7 +305,7 @@ export class TasksService {
       const progressPercentage =
         total === 0 ? 0 : Math.round((completedSubtask / total) * 100);
 
-      return { progress: progressPercentage };
+      return { progress: progressPercentage, total: total };
     } catch (e) {
       if (e instanceof HttpException) {
         throw e;
@@ -373,6 +412,7 @@ export class TasksService {
   }
 
   async updateLead(
+    boardId: string,
     taskId: string,
     leadEmail: string,
   ): Promise<TaskResponseDto> {
@@ -385,17 +425,25 @@ export class TasksService {
 
       const leadId = user[0].id;
 
+      const boardMember = await this.prisma.boardMember.findUnique({
+        where: {
+          boardId_userId: {
+            boardId: boardId,
+            userId: leadId,
+          },
+        },
+      });
+
+      if (!boardMember) {
+        throw new NotFoundException('This user is not a member of this board!');
+      }
+
       const task = await this.prisma.task.update({
         where: { id: taskId },
         data: {
           leadAssigneeId: leadId,
         },
-        include: {
-          column: true,
-        },
       });
-
-      const boardId = task.column.boardId;
 
       this.boardGateway.broadcastTaskUpdate(boardId, task);
 
